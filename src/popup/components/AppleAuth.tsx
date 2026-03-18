@@ -27,7 +27,7 @@ export function AppleAuth({ credentials, onConnect, onDisconnect, loading, error
     return (
       <div className="flex items-center gap-3 px-4 py-3">
         <div className="w-10 h-10 rounded-full bg-text/10 flex items-center justify-center text-lg">
-
+          🍎
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-text truncate">Apple Calendar</p>
