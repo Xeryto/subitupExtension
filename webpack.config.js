@@ -8,6 +8,7 @@ module.exports = {
     popup: './src/popup/index.tsx',
     'service-worker': './src/background/service-worker.ts',
     'content-script': './src/content/content-script.ts',
+    'interceptor': './src/content/interceptor.ts',
   },
   output: {
     path: path.resolve(__dirname, 'dist'),

@@ -1,11 +1,21 @@
+// Listen for intercepted data from the MAIN world interceptor
+window.addEventListener('message', (event) => {
+  if (event.source !== window) return;
+  if (event.data?.type === '__SUBITUP_SYNC_DATA__' && event.data.data) {
+    console.log('[SubItUp Sync] Content script received data, forwarding to service worker');
+    chrome.runtime.sendMessage({ type: 'INTERCEPTED_DATA', data: event.data.data }, (response) => {
+      console.log('[SubItUp Sync] Service worker response:', response);
+    });
+  }
+});
+
 // Notify service worker that user is on SubItUp
 chrome.runtime.sendMessage({ type: 'SUBITUP_PAGE_LOADED' });
 
-// --- Floating widget ---
+// --- Floating widget (inject when DOM ready) ---
 function injectWidget() {
   const ICON_SIZE = 44;
 
-  // Floating button
   const btn = document.createElement('button');
   btn.id = 'subitup-sync-fab';
   btn.title = 'SubItUp Sync';
@@ -37,7 +47,6 @@ function injectWidget() {
     btn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
   });
 
-  // Panel (iframe)
   const panel = document.createElement('div');
   panel.id = 'subitup-sync-panel';
   Object.assign(panel.style, {
@@ -58,12 +67,7 @@ function injectWidget() {
 
   const iframe = document.createElement('iframe');
   iframe.src = chrome.runtime.getURL('popup.html');
-  Object.assign(iframe.style, {
-    width: '100%',
-    height: '100%',
-    border: 'none',
-  });
-  iframe.setAttribute('allow', '');
+  Object.assign(iframe.style, { width: '100%', height: '100%', border: 'none' });
   panel.appendChild(iframe);
 
   let open = false;
@@ -72,8 +76,7 @@ function injectWidget() {
     open = !open;
     if (open) {
       panel.style.display = 'block';
-      // Force reflow before animating
-      panel.offsetHeight;
+      panel.offsetHeight; // force reflow
       panel.style.opacity = '1';
       panel.style.transform = 'translateY(0)';
     } else {
@@ -83,7 +86,6 @@ function injectWidget() {
     }
   });
 
-  // Close panel when clicking outside
   document.addEventListener('click', (e) => {
     if (open && !panel.contains(e.target as Node) && e.target !== btn && !btn.contains(e.target as Node)) {
       open = false;
@@ -97,57 +99,8 @@ function injectWidget() {
   document.body.appendChild(panel);
 }
 
-injectWidget();
-
-// Intercept fetch/XHR to capture schedule API responses
-// (MV3 service workers can't read response bodies from webRequest)
-
-const originalFetch = window.fetch;
-window.fetch = async function (...args: Parameters<typeof fetch>) {
-  const response = await originalFetch.apply(this, args);
-
-  try {
-    const url = typeof args[0] === 'string' ? args[0] : (args[0] as Request).url;
-    if (isScheduleUrl(url)) {
-      const clone = response.clone();
-      clone.json().then(data => {
-        chrome.runtime.sendMessage({ type: 'INTERCEPTED_DATA', data });
-      }).catch(() => {});
-    }
-  } catch {}
-
-  return response;
-};
-
-const originalXHROpen = XMLHttpRequest.prototype.open;
-const originalXHRSend = XMLHttpRequest.prototype.send;
-
-XMLHttpRequest.prototype.open = function (method: string, url: string | URL, ...rest: any[]) {
-  (this as any)._interceptUrl = String(url);
-  return originalXHROpen.apply(this, [method, url, ...rest] as any);
-};
-
-XMLHttpRequest.prototype.send = function (body?: Document | XMLHttpRequestBodyInit | null) {
-  const url = (this as any)._interceptUrl;
-  if (isScheduleUrl(url)) {
-    this.addEventListener('load', function () {
-      try {
-        const data = JSON.parse(this.responseText);
-        chrome.runtime.sendMessage({ type: 'INTERCEPTED_DATA', data });
-      } catch {}
-    });
-  }
-  return originalXHRSend.call(this, body);
-};
-
-function isScheduleUrl(url: string): boolean {
-  if (!url) return false;
-  const lower = url.toLowerCase();
-  return (
-    lower.includes('subitup.com') &&
-    (lower.includes('/schedule') ||
-     lower.includes('/shift') ||
-     lower.includes('/calendar') ||
-     lower.includes('/api/'))
-  );
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', injectWidget);
+} else {
+  injectWidget();
 }
