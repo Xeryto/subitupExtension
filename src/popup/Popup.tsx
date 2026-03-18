@@ -1,13 +1,14 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Shift, UserInfo, Settings, SyncStatus, DEFAULT_SETTINGS } from '../lib/types';
 import { formatDateRange } from '../utils/date';
+import { generateIcsBlob } from '../lib/ics-export';
 import { useChromeStorage } from './hooks/useChromeStorage';
 import { AuthSection } from './components/AuthSection';
 import { ShiftList } from './components/ShiftList';
 import { SyncButton } from './components/SyncButton';
 import { StatusBar } from './components/StatusBar';
 import { SettingsPanel } from './components/SettingsPanel';
-import { Calendar } from 'lucide-react';
+import { Calendar, Download } from 'lucide-react';
 
 export function Popup() {
   const [user, setUser] = useState<UserInfo | null>(null);
@@ -119,6 +120,18 @@ export function Popup() {
     });
   }, []);
 
+  const handleDownloadIcs = useCallback(() => {
+    const selected = shifts.filter(s => selectedIds.has(s.id));
+    if (selected.length === 0) return;
+    const blob = generateIcsBlob(selected, settings.timezone);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'subitup-shifts.ics';
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [shifts, selectedIds, settings.timezone]);
+
   const syncDisabled = !user || selectedCount === 0 || syncStatus === 'syncing';
 
   return (
@@ -184,6 +197,20 @@ export function Popup() {
         onSync={handleSync}
         count={selectedCount}
       />
+
+      {/* ICS download */}
+      {shifts.length > 0 && (
+        <div className="px-4 pb-2">
+          <button
+            onClick={handleDownloadIcs}
+            disabled={selectedCount === 0}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs text-primary border border-primary/20 rounded-lg cursor-pointer hover:bg-primary/5 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download size={14} />
+            Download .ics file
+          </button>
+        </div>
+      )}
 
       {/* Status bar */}
       <StatusBar status={syncStatus} lastSyncedAt={lastSyncedAt} error={syncError} />
