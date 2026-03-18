@@ -70,7 +70,7 @@ async function handleMessage(message: { type: string; [key: string]: unknown }, 
           autoSyncPending = false;
           const s = await chrome.storage.local.get('settings');
           const p = { ...DEFAULT_SETTINGS, ...s.settings }.activeProvider;
-          handleMessage({ type: 'SYNC_TO_CALENDAR', provider: p }, undefined);
+          handleMessage({ type: 'SYNC_TO_CALENDAR', provider: p }, undefined).catch(() => {});
         }
       }
       return { success: true, count: newShifts.length };
