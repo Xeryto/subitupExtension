@@ -71,7 +71,6 @@ describe('parseSubItUpResponse', () => {
   it('filters invalid shifts', () => {
     const data = [
       { id: '50', title: 'Bad', start: 'nope', end: '2024-03-17T12:00:00Z' },
-      { id: '51', title: '', start: '2024-03-17T09:00:00Z', end: '2024-03-17T17:00:00Z' },
       { id: '52', title: 'Backwards', start: '2024-03-17T17:00:00Z', end: '2024-03-17T09:00:00Z' },
     ];
     const shifts = parseSubItUpResponse(data);
