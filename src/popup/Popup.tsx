@@ -3,6 +3,7 @@ import { Shift, UserInfo, Settings, SyncStatus, AppleCredentials, CalendarProvid
 import { formatDateRange } from '../utils/date';
 import { generateIcsBlob } from '../lib/ics-export';
 import { useChromeStorage } from './hooks/useChromeStorage';
+import { safeSendMessage, registerInvalidationHandler } from './utils/chrome-api';
 import { AuthSection } from './components/AuthSection';
 import { AppleAuth } from './components/AppleAuth';
 import { ProviderSelector } from './components/ProviderSelector';
@@ -10,9 +11,10 @@ import { ShiftList } from './components/ShiftList';
 import { SyncButton } from './components/SyncButton';
 import { StatusBar } from './components/StatusBar';
 import { SettingsPanel } from './components/SettingsPanel';
-import { Calendar, Download } from 'lucide-react';
+import { Calendar, Download, RefreshCw } from 'lucide-react';
 
 export function Popup() {
+  const [invalidated, setInvalidated] = useState(false);
   const [user, setUser] = useState<UserInfo | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -28,6 +30,10 @@ export function Popup() {
   const [appleAuthLoading, setAppleAuthLoading] = useState(false);
   const [appleAuthError, setAppleAuthError] = useState<string | null>(null);
 
+  useEffect(() => {
+    registerInvalidationHandler(() => setInvalidated(true));
+  }, []);
+
   const activeProvider = settings.activeProvider || 'google';
 
   // Provider-specific last synced
@@ -38,7 +44,7 @@ export function Popup() {
 
   // Load Google user info
   useEffect(() => {
-    chrome.runtime.sendMessage({ type: 'GET_USER_INFO' }, (res) => {
+    safeSendMessage({ type: 'GET_USER_INFO' }, (res) => {
       setUser(res?.user ?? null);
       setAuthLoading(false);
     });
@@ -46,14 +52,14 @@ export function Popup() {
 
   // Load Apple credentials
   useEffect(() => {
-    chrome.runtime.sendMessage({ type: 'GET_APPLE_CREDENTIALS' }, (res) => {
+    safeSendMessage({ type: 'GET_APPLE_CREDENTIALS' }, (res) => {
       setAppleCreds(res?.credentials ?? null);
     });
   }, []);
 
   // Load shifts
   useEffect(() => {
-    chrome.runtime.sendMessage({ type: 'GET_SHIFTS' }, (res) => {
+    safeSendMessage({ type: 'GET_SHIFTS' }, (res) => {
       const s = res?.shifts ?? [];
       setShifts(s);
       setSelectedIds(new Set(s.map((shift: Shift) => shift.id)));
@@ -67,8 +73,14 @@ export function Popup() {
         setSelectedIds(new Set(s.map((shift: Shift) => shift.id)));
       }
     };
-    chrome.storage.local.onChanged.addListener(listener);
-    return () => chrome.storage.local.onChanged.removeListener(listener);
+    try {
+      chrome.storage.local.onChanged.addListener(listener);
+    } catch { /* context invalidated */ }
+    return () => {
+      try {
+        chrome.storage.local.onChanged.removeListener(listener);
+      } catch { /* context invalidated */ }
+    };
   }, []);
 
   const handleToggleShift = useCallback((id: string) => {
@@ -101,14 +113,14 @@ export function Popup() {
   const handleSignIn = useCallback(() => {
     setAuthLoading(true);
     setSyncError(null);
-    chrome.runtime.sendMessage({ type: 'GET_AUTH_TOKEN' }, (res) => {
+    safeSendMessage({ type: 'GET_AUTH_TOKEN' }, (res) => {
       if (res?.error) {
         setSyncError(`Auth failed: ${res.error}`);
         setSyncStatus('error');
         setAuthLoading(false);
         return;
       }
-      chrome.runtime.sendMessage({ type: 'GET_USER_INFO' }, (res) => {
+      safeSendMessage({ type: 'GET_USER_INFO' }, (res) => {
         setUser(res?.user ?? null);
         setAuthLoading(false);
       });
@@ -116,7 +128,7 @@ export function Popup() {
   }, []);
 
   const handleSignOut = useCallback(() => {
-    chrome.runtime.sendMessage({ type: 'SIGN_OUT' }, () => {
+    safeSendMessage({ type: 'SIGN_OUT' }, () => {
       setUser(null);
     });
   }, []);
@@ -125,7 +137,7 @@ export function Popup() {
   const handleAppleConnect = useCallback((creds: AppleCredentials) => {
     setAppleAuthLoading(true);
     setAppleAuthError(null);
-    chrome.runtime.sendMessage({ type: 'VALIDATE_APPLE_CREDENTIALS', credentials: creds }, (res) => {
+    safeSendMessage({ type: 'VALIDATE_APPLE_CREDENTIALS', credentials: creds }, (res) => {
       setAppleAuthLoading(false);
       if (res?.success) {
         setAppleCreds(creds);
@@ -136,7 +148,7 @@ export function Popup() {
   }, []);
 
   const handleAppleDisconnect = useCallback(() => {
-    chrome.runtime.sendMessage({ type: 'DISCONNECT_APPLE' }, () => {
+    safeSendMessage({ type: 'DISCONNECT_APPLE' }, () => {
       setAppleCreds(null);
     });
   }, []);
@@ -148,7 +160,7 @@ export function Popup() {
 
     setSyncStatus('syncing');
     setSyncError(null);
-    chrome.runtime.sendMessage({ type: 'SYNC_SELECTED', shifts: selected, provider: activeProvider }, (res) => {
+    safeSendMessage({ type: 'SYNC_SELECTED', shifts: selected, provider: activeProvider }, (res) => {
       if (res?.success) {
         setSyncStatus('success');
         setLastSyncedAt(new Date().toISOString());
@@ -161,7 +173,7 @@ export function Popup() {
 
   const handleClearEvents = useCallback(() => {
     setClearing(true);
-    chrome.runtime.sendMessage({ type: 'CLEAR_SYNCED_EVENTS', provider: activeProvider }, (res) => {
+    safeSendMessage({ type: 'CLEAR_SYNCED_EVENTS', provider: activeProvider }, (res) => {
       setClearing(false);
       if (!res?.success) {
         setSyncError(res?.error ?? 'Failed to clear events');
@@ -184,6 +196,16 @@ export function Popup() {
 
   const isAuthenticated = activeProvider === 'google' ? !!user : !!appleCreds;
   const syncDisabled = !isAuthenticated || selectedCount === 0 || syncStatus === 'syncing';
+
+  if (invalidated) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-[200px] gap-3 p-6 bg-bg text-center">
+        <RefreshCw size={28} className="text-primary/60" />
+        <p className="text-sm font-medium text-text">Extension reloaded</p>
+        <p className="text-xs text-text/50">Refresh the page to reconnect the panel.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full min-h-[500px] bg-bg">

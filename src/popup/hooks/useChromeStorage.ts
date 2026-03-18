@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
+import { safeStorageGet, safeStorageSet } from '../utils/chrome-api';
 
 export function useChromeStorage<T>(key: string, defaultValue: T): [T, (val: T) => void] {
   const [value, setValue] = useState<T>(defaultValue);
 
   useEffect(() => {
-    chrome.storage.local.get(key, (result) => {
+    safeStorageGet(key, (result) => {
       if (result[key] !== undefined) {
         setValue(result[key]);
       }
@@ -16,13 +17,23 @@ export function useChromeStorage<T>(key: string, defaultValue: T): [T, (val: T) 
       }
     };
 
-    chrome.storage.local.onChanged.addListener(listener);
-    return () => chrome.storage.local.onChanged.removeListener(listener);
+    try {
+      chrome.storage.local.onChanged.addListener(listener);
+    } catch {
+      // context invalidated
+    }
+    return () => {
+      try {
+        chrome.storage.local.onChanged.removeListener(listener);
+      } catch {
+        // context invalidated
+      }
+    };
   }, [key, defaultValue]);
 
   const set = useCallback((val: T) => {
     setValue(val);
-    chrome.storage.local.set({ [key]: val });
+    safeStorageSet({ [key]: val });
   }, [key]);
 
   return [value, set];
