@@ -53,8 +53,20 @@ export async function syncShifts(token: string, shifts: Shift[]): Promise<SyncRe
         });
         result.updated++;
       } else {
-        // Unchanged — keep existing record
-        newRecords.push(existing);
+        // Unchanged — verify event still exists, recreate if deleted
+        const exists = await cal.eventExists(token, calendarId, existing.calendarEventId);
+        if (exists) {
+          newRecords.push(existing);
+        } else {
+          const event = await cal.createEvent(token, calendarId, shift);
+          newRecords.push({
+            shiftId: shift.id,
+            calendarEventId: event.id,
+            lastSyncedAt: new Date().toISOString(),
+            hash,
+          });
+          result.created++;
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

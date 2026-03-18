@@ -125,6 +125,22 @@ export async function updateEvent(
   );
 }
 
+export async function eventExists(
+  token: string,
+  calendarId: string,
+  eventId: string
+): Promise<boolean> {
+  try {
+    await apiRequest<CalendarEvent>(
+      token,
+      `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function deleteEvent(
   token: string,
   calendarId: string,
