@@ -4,6 +4,7 @@ import { Shift, UserInfo, AppleCredentials, CalendarProviderType, DEFAULT_SETTIN
 import { GoogleProvider } from '../lib/google-provider';
 import { AppleProvider } from '../lib/apple-provider';
 import { CalendarProvider } from '../lib/calendar-provider';
+import { WEB_CLIENT_ID } from '../config';
 
 const DISPLAY_SHIFTS_KEY = 'displayShifts';  // Latest view — replaced on each API response
 const ALL_SHIFTS_KEY = 'allShifts';          // Accumulated — merged, never deleted
@@ -13,7 +14,6 @@ const APPLE_CREDS_KEY = 'appleCredentials';
 // Dev (unpacked) uses launchWebAuthFlow; production uses getAuthToken
 const isProduction = !!chrome.runtime.getManifest().update_url;
 
-const WEB_CLIENT_ID = '429501987868-jfdub6uufsu8i5juo1atnnkn3us31mus.apps.googleusercontent.com';
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
   'https://www.googleapis.com/auth/calendar.calendars',
