@@ -37,8 +37,8 @@ export function Popup() {
 
     // Live-update when shifts change in storage
     const listener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
-      if (changes.capturedShifts) {
-        setShifts(changes.capturedShifts.newValue ?? []);
+      if (changes.displayShifts) {
+        setShifts(changes.displayShifts.newValue ?? []);
       }
     };
     chrome.storage.local.onChanged.addListener(listener);

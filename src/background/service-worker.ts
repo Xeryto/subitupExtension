@@ -2,7 +2,8 @@ import { parseSubItUpResponse } from '../lib/shift-parser';
 import { syncShifts, clearSyncedEvents } from '../lib/sync-engine';
 import { Shift, UserInfo, DEFAULT_SETTINGS } from '../lib/types';
 
-const SHIFTS_KEY = 'capturedShifts';
+const DISPLAY_SHIFTS_KEY = 'displayShifts';  // Latest view — replaced on each API response
+const ALL_SHIFTS_KEY = 'allShifts';          // Accumulated — merged, never deleted
 const TOKEN_KEY = 'authToken';
 
 // Dev (unpacked) uses launchWebAuthFlow; production uses getAuthToken
@@ -45,23 +46,34 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
     case 'INTERCEPTED_DATA': {
       const newShifts = parseSubItUpResponse(message.data);
       if (newShifts.length > 0) {
-        await chrome.storage.local.set({ [SHIFTS_KEY]: newShifts });
+        // Display: replace with latest view
+        await chrome.storage.local.set({ [DISPLAY_SHIFTS_KEY]: newShifts });
         updateBadge(newShifts.length);
+
+        // Sync pool: merge (upsert by ID, never delete)
+        const storage = await chrome.storage.local.get(ALL_SHIFTS_KEY);
+        const existing: Shift[] = storage[ALL_SHIFTS_KEY] || [];
+        const map = new Map(existing.map(s => [s.id, s]));
+        for (const s of newShifts) {
+          map.set(s.id, s);
+        }
+        await chrome.storage.local.set({ [ALL_SHIFTS_KEY]: Array.from(map.values()) });
       }
       return { success: true, count: newShifts.length };
     }
 
     case 'GET_SHIFTS': {
-      const storage = await chrome.storage.local.get(SHIFTS_KEY);
-      return { shifts: storage[SHIFTS_KEY] || [] };
+      const storage = await chrome.storage.local.get(DISPLAY_SHIFTS_KEY);
+      return { shifts: storage[DISPLAY_SHIFTS_KEY] || [] };
     }
 
     case 'SYNC_TO_CALENDAR': {
       const token = await getAuthToken(false);
       if (!token) return { success: false, error: 'Not authenticated' };
 
-      const storage = await chrome.storage.local.get(SHIFTS_KEY);
-      const shifts: Shift[] = storage[SHIFTS_KEY] || [];
+      // Sync from the accumulated pool, not just the current display
+      const storage = await chrome.storage.local.get(ALL_SHIFTS_KEY);
+      const shifts: Shift[] = storage[ALL_SHIFTS_KEY] || [];
       if (shifts.length === 0) return { success: false, error: 'No shifts to sync' };
 
       try {
@@ -83,8 +95,8 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
           }
           const newToken = await getAuthToken(false);
           if (newToken) {
-            const storage2 = await chrome.storage.local.get(SHIFTS_KEY);
-            const result = await syncShifts(newToken, storage2[SHIFTS_KEY] || []);
+            const storage2 = await chrome.storage.local.get(ALL_SHIFTS_KEY);
+            const result = await syncShifts(newToken, storage2[ALL_SHIFTS_KEY] || []);
             return { success: true, syncedCount: result.created + result.updated, ...result };
           }
         }
