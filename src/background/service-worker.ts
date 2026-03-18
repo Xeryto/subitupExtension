@@ -3,18 +3,28 @@ import { syncShifts, clearSyncedEvents } from '../lib/sync-engine';
 import { Shift, UserInfo, DEFAULT_SETTINGS } from '../lib/types';
 
 const SHIFTS_KEY = 'capturedShifts';
+const TOKEN_KEY = 'authToken';
+
+// Dev (unpacked) uses launchWebAuthFlow; production uses getAuthToken
+const isProduction = !!chrome.runtime.getManifest().update_url;
+
+const WEB_CLIENT_ID = '429501987868-jfdub6uufsu8i5juo1atnnkn3us31mus.apps.googleusercontent.com';
+const SCOPES = [
+  'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+  'https://www.googleapis.com/auth/calendar.calendars',
+  'https://www.googleapis.com/auth/calendar.events.owned',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
+].join(' ');
 
 // --- Network interception ---
-// Listen for SubItUp API responses containing schedule/shift data
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
     if (details.method !== 'GET' && details.method !== 'POST') return;
     if (!details.url.match(/subitup\.com.*\/(schedule|shift|calendar|api)/i)) return;
-
-    // For POST requests with a request body
     if (details.requestBody?.raw) {
-      // We can't read response bodies from webRequest in MV3,
-      // so we rely on the content script to forward fetched data
+      // Can't read response bodies from webRequest in MV3;
+      // content script forwards fetched data instead
     }
   },
   { urls: ['https://*.subitup.com/*'] },
@@ -33,12 +43,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 async function handleMessage(message: { type: string; [key: string]: unknown }): Promise<unknown> {
   switch (message.type) {
     case 'INTERCEPTED_DATA': {
-      const shifts = parseSubItUpResponse(message.data);
-      if (shifts.length > 0) {
-        await chrome.storage.local.set({ [SHIFTS_KEY]: shifts });
-        updateBadge(shifts.length);
+      const newShifts = parseSubItUpResponse(message.data);
+      if (newShifts.length > 0) {
+        await chrome.storage.local.set({ [SHIFTS_KEY]: newShifts });
+        updateBadge(newShifts.length);
       }
-      return { success: true, count: shifts.length };
+      return { success: true, count: newShifts.length };
     }
 
     case 'GET_SHIFTS': {
@@ -47,7 +57,7 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
     }
 
     case 'SYNC_TO_CALENDAR': {
-      const token = await getAuthToken();
+      const token = await getAuthToken(false);
       if (!token) return { success: false, error: 'Not authenticated' };
 
       const storage = await chrome.storage.local.get(SHIFTS_KEY);
@@ -65,9 +75,13 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg === 'AUTH_EXPIRED') {
-          // Try refreshing token
-          chrome.identity.removeCachedAuthToken({ token });
-          const newToken = await getAuthToken();
+          // Clear stale token and retry silently
+          await chrome.storage.local.remove(TOKEN_KEY);
+          if (isProduction) {
+            const staleToken = token;
+            chrome.identity.removeCachedAuthToken({ token: staleToken });
+          }
+          const newToken = await getAuthToken(false);
           if (newToken) {
             const storage2 = await chrome.storage.local.get(SHIFTS_KEY);
             const result = await syncShifts(newToken, storage2[SHIFTS_KEY] || []);
@@ -80,7 +94,10 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
     }
 
     case 'GET_AUTH_TOKEN': {
-      const token = await getAuthToken();
+      const token = await getAuthToken(true);
+      if (!token) {
+        return { token: null, error: (globalThis as any).__lastAuthError ?? 'Unknown auth error' };
+      }
       return { token };
     }
 
@@ -107,13 +124,16 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
     case 'SIGN_OUT': {
       const token = await getAuthToken(false);
       if (token) {
-        chrome.identity.removeCachedAuthToken({ token });
+        if (isProduction) {
+          chrome.identity.removeCachedAuthToken({ token });
+        }
+        await chrome.storage.local.remove(TOKEN_KEY);
       }
       return { success: true };
     }
 
     case 'CLEAR_SYNCED_EVENTS': {
-      const token = await getAuthToken();
+      const token = await getAuthToken(false);
       if (!token) return { success: false, error: 'Not authenticated' };
       try {
         const count = await clearSyncedEvents(token);
@@ -128,16 +148,83 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
   }
 }
 
-async function getAuthToken(interactive: boolean = true): Promise<string | null> {
+// --- Auth ---
+
+async function getAuthToken(interactive: boolean): Promise<string | null> {
+  if (isProduction) {
+    return getAuthTokenProduction(interactive);
+  }
+  return getAuthTokenDev(interactive);
+}
+
+// Production: chrome.identity.getAuthToken (requires published extension)
+function getAuthTokenProduction(interactive: boolean): Promise<string | null> {
   return new Promise((resolve) => {
     chrome.identity.getAuthToken({ interactive }, (token) => {
       if (chrome.runtime.lastError) {
-        console.warn('Auth error:', chrome.runtime.lastError.message);
+        const msg = chrome.runtime.lastError.message ?? 'Unknown auth error';
+        console.error('Auth error:', msg);
+        (globalThis as any).__lastAuthError = msg;
         resolve(null);
         return;
       }
       resolve(token ?? null);
     });
+  });
+}
+
+// Dev: chrome.identity.launchWebAuthFlow (works with unpacked extensions)
+async function getAuthTokenDev(interactive: boolean): Promise<string | null> {
+  // Check for cached token first
+  const stored = await chrome.storage.local.get(TOKEN_KEY);
+  if (stored[TOKEN_KEY]) {
+    // Validate token is still good
+    try {
+      const res = await fetch('https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=' + stored[TOKEN_KEY]);
+      if (res.ok) return stored[TOKEN_KEY];
+    } catch {}
+    // Token expired, clear it
+    await chrome.storage.local.remove(TOKEN_KEY);
+  }
+
+  if (!interactive) return null;
+
+  // Launch OAuth flow
+  const redirectUri = chrome.identity.getRedirectURL();
+  const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  authUrl.searchParams.set('client_id', WEB_CLIENT_ID);
+  authUrl.searchParams.set('response_type', 'token');
+  authUrl.searchParams.set('redirect_uri', redirectUri);
+  authUrl.searchParams.set('scope', SCOPES);
+  authUrl.searchParams.set('prompt', 'consent');
+
+  return new Promise((resolve) => {
+    chrome.identity.launchWebAuthFlow(
+      { url: authUrl.toString(), interactive: true },
+      (responseUrl) => {
+        if (chrome.runtime.lastError || !responseUrl) {
+          const msg = chrome.runtime.lastError?.message ?? 'Auth flow cancelled';
+          console.error('Auth error:', msg);
+          (globalThis as any).__lastAuthError = msg;
+          resolve(null);
+          return;
+        }
+
+        // Extract access_token from redirect URL fragment
+        const url = new URL(responseUrl);
+        const params = new URLSearchParams(url.hash.substring(1));
+        const token = params.get('access_token');
+
+        if (token) {
+          chrome.storage.local.set({ [TOKEN_KEY]: token });
+          resolve(token);
+        } else {
+          console.error('No access_token in response:', responseUrl);
+          (globalThis as any).__lastAuthError = 'No access token received';
+          resolve(null);
+        }
+      }
+    );
   });
 }
 
