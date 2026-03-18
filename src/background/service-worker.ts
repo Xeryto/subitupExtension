@@ -63,10 +63,12 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
         }
         await chrome.storage.local.set({ [ALL_SHIFTS_KEY]: Array.from(map.values()) });
 
-        // Auto-sync if pending
+        // Auto-sync if pending — use active provider
         if (autoSyncPending) {
           autoSyncPending = false;
-          handleMessage({ type: 'SYNC_TO_CALENDAR' });
+          const s = await chrome.storage.local.get('settings');
+          const p = { ...DEFAULT_SETTINGS, ...s.settings }.activeProvider;
+          handleMessage({ type: 'SYNC_TO_CALENDAR', provider: p });
         }
       }
       return { success: true, count: newShifts.length };
