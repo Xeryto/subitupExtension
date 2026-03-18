@@ -6,7 +6,7 @@ import * as caldav from './apple-caldav';
 const CALENDAR_NAME = 'SubItUp Shifts';
 
 function shiftToIcal(shift: Shift, sequence = 0): string {
-  const uid = `subitup-${shift.id}@subitup-sync`;
+  const uid = eventUid(shift.id);
   const now = toIcsUtc(new Date().toISOString());
   const lines = [
     'BEGIN:VCALENDAR',
@@ -38,6 +38,11 @@ function eventUid(shiftId: string): string {
   return `subitup-${shiftId}`;
 }
 
+// Strip legacy @subitup-sync suffix from stored calendarEventIds
+function normalizeUid(uid: string): string {
+  return uid.replace(/@subitup-sync$/, '');
+}
+
 export class AppleProvider implements CalendarProvider {
   readonly name = 'apple';
   private calendarHome: string | null = null;
@@ -62,17 +67,18 @@ export class AppleProvider implements CalendarProvider {
   }
 
   async updateEvent(calendarId: string, eventId: string, shift: Shift): Promise<CalendarEvent> {
+    const uid = normalizeUid(eventId);
     const ical = shiftToIcal(shift, 1);
-    const etag = await caldav.putEvent(this.creds, calendarId, eventId, ical);
-    return { id: eventId, etag };
+    const etag = await caldav.putEvent(this.creds, calendarId, uid, ical);
+    return { id: uid, etag };
   }
 
   async deleteEvent(calendarId: string, eventId: string): Promise<void> {
-    return caldav.deleteEvent(this.creds, calendarId, eventId);
+    return caldav.deleteEvent(this.creds, calendarId, normalizeUid(eventId));
   }
 
   async eventExists(calendarId: string, eventId: string): Promise<boolean> {
-    return caldav.eventExists(this.creds, calendarId, eventId);
+    return caldav.eventExists(this.creds, calendarId, normalizeUid(eventId));
   }
 
   async deleteAllEvents(calendarId: string): Promise<number> {
