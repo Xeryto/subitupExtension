@@ -157,11 +157,9 @@ function shiftToEvent(shift: Shift): object {
     location: shift.location,
     start: {
       dateTime: shift.start,
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     },
     end: {
       dateTime: shift.end,
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     },
     extendedProperties: {
       private: {
