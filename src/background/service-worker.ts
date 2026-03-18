@@ -58,6 +58,12 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
           map.set(s.id, s);
         }
         await chrome.storage.local.set({ [ALL_SHIFTS_KEY]: Array.from(map.values()) });
+
+        // Auto-sync if pending
+        if (autoSyncPending) {
+          autoSyncPending = false;
+          handleMessage({ type: 'SYNC_TO_CALENDAR' });
+        }
       }
       return { success: true, count: newShifts.length };
     }
@@ -249,13 +255,15 @@ function updateBadgeColor(color: string) {
   chrome.action.setBadgeBackgroundColor({ color });
 }
 
-// Auto-sync on SubItUp page load (if enabled)
+// Auto-sync: set flag on page load, trigger after first shift data arrives
+let autoSyncPending = false;
+
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === 'SUBITUP_PAGE_LOADED') {
     chrome.storage.local.get('settings', (result) => {
       const settings = { ...DEFAULT_SETTINGS, ...result.settings };
       if (settings.autoSync) {
-        handleMessage({ type: 'SYNC_TO_CALENDAR' });
+        autoSyncPending = true;
       }
     });
   }
