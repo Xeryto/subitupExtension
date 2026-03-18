@@ -32,7 +32,7 @@ All data is stored **locally on your device** using Chrome's built-in `chrome.st
 - Your sync history (which shifts have been synced and their calendar event IDs)
 - Your settings (timezone, auto-sync preference, active provider)
 - Your Apple credentials (if connected)
-- Your Google OAuth token (if connected, in dev/unpacked mode only)
+- Your Google OAuth token (if connected)
 
 None of this data is stored on any external server operated by this extension.
 

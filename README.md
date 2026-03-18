@@ -1,25 +1,12 @@
 # SubItUp Sync
 
-A Chrome extension that automatically detects your SubItUp work schedule and syncs it to Google Calendar or Apple Calendar — no copy-pasting required.
+A Chrome extension that syncs your SubItUp work schedule to Google Calendar or Apple Calendar — no copy-pasting required.
 
 ---
 
-## What it does
+## Install
 
-When you open your SubItUp schedule, the extension detects your shifts in the background. You pick which shifts to sync, click one button, and they appear in your calendar with the correct times, titles, and locations.
-
----
-
-## Installation
-
-> SubItUp Sync is not yet on the Chrome Web Store. Install it manually:
-
-1. Download or clone this repository
-2. Run `npm install && npm run build` (requires Node.js)
-3. Open Chrome and go to `chrome://extensions`
-4. Turn on **Developer mode** (toggle in the top-right corner)
-5. Click **Load unpacked** and select the `dist/` folder
-6. The SubItUp Sync icon will appear in your Chrome toolbar
+[SubItUp Sync on the Chrome Web Store](https://chrome.google.com/webstore/detail/subitup-sync) — install and you're ready to set up.
 
 ---
 
@@ -27,7 +14,7 @@ When you open your SubItUp schedule, the extension detects your shifts in the ba
 
 ### Google Calendar
 
-1. Open the extension popup (click the icon in your toolbar, or click the floating button on any SubItUp page)
+1. Open the extension popup (click the toolbar icon, or the floating button on any SubItUp page)
 2. Make sure **Google** is selected at the top
 3. Click **Sign in with Google**
 4. Approve the calendar permission — the extension only requests access to create and manage its own "SubItUp Shifts" calendar
@@ -39,34 +26,24 @@ When you open your SubItUp schedule, the extension detects your shifts in the ba
    - Go to [appleid.apple.com](https://appleid.apple.com/account/manage) → Sign In and Security → App-Specific Passwords
    - Click the **+** button, give it a name like "SubItUp Sync", and copy the generated password
 3. Enter your Apple ID email and the app-specific password, then click **Connect Apple Calendar**
-4. The extension will validate your credentials by connecting to iCloud CalDAV
+4. The extension validates your credentials by connecting to iCloud CalDAV
 
 ---
 
-## How to use
+## Usage
 
-1. **Navigate to your SubItUp schedule** — the extension automatically reads your shifts as the page loads
-2. **Open the popup** — click the toolbar icon or the floating calendar button on the page
-3. **Select shifts** — all shifts are checked by default; uncheck any you don't want to sync
-4. **Click Sync** — your shifts are added to a calendar called "SubItUp Shifts" in your Google or Apple Calendar
+1. **Navigate to your SubItUp schedule** — the extension reads your shifts as the page loads
+2. **Open the popup** — click the toolbar icon or the floating calendar button
+3. **Select shifts** — all shifts are checked by default; uncheck any you don't want
+4. **Click Sync** — shifts are added to a calendar called "SubItUp Shifts"
 
 ### Download as .ics
 
-If you'd rather import shifts manually (or use a calendar app that doesn't support CalDAV):
-
-- Select the shifts you want, then click **Download .ics file**
-- Open the downloaded file with any calendar app (Calendar.app, Outlook, Thunderbird, etc.)
-- No account connection required
+Select the shifts you want, then click **Download .ics file**. Open the downloaded file with any calendar app (Calendar.app, Outlook, Thunderbird, etc.). No account connection required.
 
 ### Auto-sync
 
-In **Settings** (bottom of the popup), you can enable **Auto-sync on page load**. When active, the extension will automatically sync your shifts to your calendar every time you open your SubItUp schedule — no button click needed.
-
----
-
-## Switching between Google and Apple
-
-Use the **Google / Apple** toggle at the top of the popup. Each provider has its own sync history and records — switching providers won't affect your other calendar's synced events.
+In **Settings** (bottom of the popup), enable **Auto-sync on page load** to automatically sync every time you open your SubItUp schedule.
 
 ---
 
@@ -75,8 +52,8 @@ Use the **Google / Apple** toggle at the top of the popup. Each provider has its
 | Setting | What it does |
 |---|---|
 | Auto-sync on page load | Automatically syncs shifts whenever you open SubItUp |
-| Timezone | Shows your detected local timezone (used for .ics exports and Apple sync) |
-| Clear synced events | Removes all events the extension created in your calendar and resets sync history |
+| Timezone | Your detected local timezone (used for .ics exports and Apple sync) |
+| Clear synced events | Removes all events the extension created and resets sync history |
 
 ---
 
@@ -84,7 +61,7 @@ Use the **Google / Apple** toggle at the top of the popup. Each provider has its
 
 **No shifts appear in the popup**
 - Make sure you're on a SubItUp page with your schedule loaded
-- Try navigating to a different week and back — the extension reads shifts as the page loads
+- Try navigating to a different week and back
 
 **Google: "Auth failed" error**
 - Sign out and sign back in — your token may have expired
@@ -97,9 +74,9 @@ Use the **Google / Apple** toggle at the top of the popup. Each provider has its
 **Events appear at the wrong time**
 - Check that your timezone in Settings matches your local timezone
 
-**Sync succeeded but events don't appear in calendar**
-- For Google: check your calendar list for a calendar named "SubItUp Shifts"
-- For Apple: iCloud can take a minute or two to sync to your devices
+**Sync succeeded but events don't appear**
+- For Google: check your calendar list for "SubItUp Shifts"
+- For Apple: iCloud can take a minute or two to propagate to devices
 
 ---
 
@@ -108,7 +85,7 @@ Use the **Google / Apple** toggle at the top of the popup. Each provider has its
 | Permission | Why it's needed |
 |---|---|
 | `identity` | Signs you in to Google using Chrome's built-in OAuth |
-| `storage` | Saves your settings, shift data, and sync history locally on your device |
+| `storage` | Saves settings, shift data, and sync history locally on your device |
 | `webRequest` | Monitors SubItUp page loads to detect when new schedule data is available |
 | `https://*.subitup.com/*` | Reads your schedule data from SubItUp pages |
 | `https://www.googleapis.com/*` | Creates and manages events in Google Calendar |
@@ -124,11 +101,36 @@ This extension processes your data entirely on your device. See [PRIVACY.md](PRI
 
 ## Development
 
-```bash
-npm install          # install dependencies
-npm run build        # production build → dist/
-npm run dev          # watch mode (rebuilds on save)
-npm test             # run tests
-```
+### Prerequisites
 
-Load the extension: `chrome://extensions` → Developer mode → Load unpacked → select `dist/`
+- Node.js (v18+)
+
+### Dev setup
+
+1. Clone this repo
+2. `npm install && npm run build`
+3. Copy `manifest.example.json` → `manifest.json`, fill in your Chrome OAuth client ID
+4. Copy `src/config.example.ts` → `src/config.ts`, fill in your Web OAuth client ID
+5. Open `chrome://extensions` → Developer mode → Load unpacked → select `dist/`
+
+### Google OAuth setup (dev)
+
+The extension uses two separate OAuth client IDs from the same GCP project:
+
+- **Published extension** — uses `chrome.identity.getAuthToken()` with the **Chrome App** client ID in `manifest.json`. Chrome manages the token silently; no redirect URI needed.
+- **Dev/unpacked** — uses `chrome.identity.launchWebAuthFlow()` with a **Web Application** client ID in `src/config.ts`. Requires a redirect URI (`chrome-extension://<YOUR_EXTENSION_ID>/`) added in GCP Console.
+
+Detection: `chrome.runtime.getManifest().update_url` is present only in published installs. The service worker uses this to pick the right flow automatically.
+
+To set up both:
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) → APIs & Services → Credentials
+2. Create a **Chrome App** OAuth client → paste its client ID into `manifest.json`
+3. Create a **Web application** OAuth client → add `chrome-extension://<YOUR_EXTENSION_ID>/` as an authorized redirect URI → paste its client ID into `src/config.ts`
+
+### Commands
+
+```bash
+npm run build    # production build → dist/
+npm run dev      # watch mode
+npm test         # run tests
+```

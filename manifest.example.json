@@ -11,7 +11,7 @@
     "https://*.icloud.com/*"
   ],
   "oauth2": {
-    "client_id": "429501987868-b96j7jb0e48kp8qtgfq814d0jaoetbdb.apps.googleusercontent.com",
+    "client_id": "YOUR_CHROME_OAUTH_CLIENT_ID.apps.googleusercontent.com",
     "scopes": [
       "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
       "https://www.googleapis.com/auth/calendar.calendars",
