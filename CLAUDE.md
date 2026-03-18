@@ -1,0 +1,1 @@
+- Make atomic git commits after each logical change. Don't wait to be asked.
