@@ -6,3 +6,4 @@ dist/
 .claude/
 src/config.ts
 manifest.json
+LAUNCH_CHECKLIST.md
