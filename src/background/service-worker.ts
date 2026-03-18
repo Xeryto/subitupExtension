@@ -111,6 +111,44 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
       }
     }
 
+    case 'SYNC_SELECTED': {
+      const token = await getAuthToken(false);
+      if (!token) return { success: false, error: 'Not authenticated' };
+
+      const shifts = message.shifts as Shift[];
+      if (!shifts || shifts.length === 0) return { success: false, error: 'No shifts selected' };
+
+      // Also merge selected shifts into the accumulated pool
+      const storage = await chrome.storage.local.get(ALL_SHIFTS_KEY);
+      const existing: Shift[] = storage[ALL_SHIFTS_KEY] || [];
+      const map = new Map(existing.map(s => [s.id, s]));
+      for (const s of shifts) map.set(s.id, s);
+      await chrome.storage.local.set({ [ALL_SHIFTS_KEY]: Array.from(map.values()) });
+
+      try {
+        const result = await syncShifts(token, shifts);
+        updateBadgeColor('#22C55E');
+        return {
+          success: true,
+          syncedCount: result.created + result.updated,
+          ...result,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg === 'AUTH_EXPIRED') {
+          await chrome.storage.local.remove(TOKEN_KEY);
+          if (isProduction) chrome.identity.removeCachedAuthToken({ token });
+          const newToken = await getAuthToken(false);
+          if (newToken) {
+            const result = await syncShifts(newToken, shifts);
+            return { success: true, syncedCount: result.created + result.updated, ...result };
+          }
+        }
+        updateBadgeColor('#EF4444');
+        return { success: false, error: msg };
+      }
+    }
+
     case 'GET_AUTH_TOKEN': {
       const token = await getAuthToken(true);
       if (!token) {

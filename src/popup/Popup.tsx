@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Shift, UserInfo, Settings, SyncStatus, DEFAULT_SETTINGS } from '../lib/types';
 import { formatDateRange } from '../utils/date';
 import { useChromeStorage } from './hooks/useChromeStorage';
@@ -7,13 +7,14 @@ import { ShiftList } from './components/ShiftList';
 import { SyncButton } from './components/SyncButton';
 import { StatusBar } from './components/StatusBar';
 import { SettingsPanel } from './components/SettingsPanel';
-import { Calendar, Settings as SettingsIcon } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 
 export function Popup() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [shiftsLoading, setShiftsLoading] = useState(true);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [syncError, setSyncError] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useChromeStorage<string | null>('lastSyncedAt', null);
@@ -31,19 +32,41 @@ export function Popup() {
   // Load shifts
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'GET_SHIFTS' }, (res) => {
-      setShifts(res?.shifts ?? []);
+      const s = res?.shifts ?? [];
+      setShifts(s);
+      setSelectedIds(new Set(s.map((shift: Shift) => shift.id)));
       setShiftsLoading(false);
     });
 
-    // Live-update when shifts change in storage
     const listener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
       if (changes.displayShifts) {
-        setShifts(changes.displayShifts.newValue ?? []);
+        const s = changes.displayShifts.newValue ?? [];
+        setShifts(s);
+        setSelectedIds(new Set(s.map((shift: Shift) => shift.id)));
       }
     };
     chrome.storage.local.onChanged.addListener(listener);
     return () => chrome.storage.local.onChanged.removeListener(listener);
   }, []);
+
+  const handleToggleShift = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleToggleAll = useCallback(() => {
+    setSelectedIds(prev => {
+      if (prev.size === shifts.length) return new Set();
+      return new Set(shifts.map(s => s.id));
+    });
+  }, [shifts]);
+
+  const selectedCount = selectedIds.size;
+  const allSelected = selectedCount === shifts.length && shifts.length > 0;
 
   const handleSignIn = useCallback(() => {
     setAuthLoading(true);
@@ -69,9 +92,12 @@ export function Popup() {
   }, []);
 
   const handleSync = useCallback(() => {
+    const selected = shifts.filter(s => selectedIds.has(s.id));
+    if (selected.length === 0) return;
+
     setSyncStatus('syncing');
     setSyncError(null);
-    chrome.runtime.sendMessage({ type: 'SYNC_TO_CALENDAR' }, (res) => {
+    chrome.runtime.sendMessage({ type: 'SYNC_SELECTED', shifts: selected }, (res) => {
       if (res?.success) {
         setSyncStatus('success');
         setLastSyncedAt(new Date().toISOString());
@@ -80,7 +106,7 @@ export function Popup() {
         setSyncError(res?.error ?? 'Sync failed');
       }
     });
-  }, [setLastSyncedAt]);
+  }, [shifts, selectedIds, setLastSyncedAt]);
 
   const handleClearEvents = useCallback(() => {
     setClearing(true);
@@ -93,7 +119,7 @@ export function Popup() {
     });
   }, []);
 
-  const syncDisabled = !user || shifts.length === 0 || syncStatus === 'syncing';
+  const syncDisabled = !user || selectedCount === 0 || syncStatus === 'syncing';
 
   return (
     <div className="flex flex-col h-full min-h-[500px] bg-bg">
@@ -115,12 +141,27 @@ export function Popup() {
 
       <div className="border-t border-primary/10" />
 
-      {/* Shift summary */}
+      {/* Shift summary + select all */}
       {shifts.length > 0 && (
         <div className="px-4 py-2 flex items-center gap-2">
+          <button
+            onClick={handleToggleAll}
+            className="flex items-center justify-center w-4 h-4 rounded border cursor-pointer transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary/30"
+            style={{
+              borderColor: allSelected ? '#0891B2' : '#164E6340',
+              backgroundColor: allSelected ? '#0891B2' : 'transparent',
+            }}
+            aria-label={allSelected ? 'Deselect all' : 'Select all'}
+          >
+            {allSelected && (
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="1.5,5 4,7.5 8.5,2.5" />
+              </svg>
+            )}
+          </button>
           <Calendar size={16} className="text-primary" />
           <p className="text-sm font-medium text-text">
-            {shifts.length} shift{shifts.length !== 1 ? 's' : ''} found
+            {selectedCount}/{shifts.length} shift{shifts.length !== 1 ? 's' : ''}
           </p>
           <p className="text-xs text-text/40 ml-auto">{formatDateRange(shifts)}</p>
         </div>
@@ -128,11 +169,21 @@ export function Popup() {
 
       {/* Shift list — scrollable */}
       <div className="flex-1 overflow-y-auto">
-        <ShiftList shifts={shifts} loading={shiftsLoading} />
+        <ShiftList
+          shifts={shifts}
+          loading={shiftsLoading}
+          selectedIds={selectedIds}
+          onToggle={handleToggleShift}
+        />
       </div>
 
       {/* Sync button */}
-      <SyncButton status={syncStatus} disabled={syncDisabled} onSync={handleSync} />
+      <SyncButton
+        status={syncStatus}
+        disabled={syncDisabled}
+        onSync={handleSync}
+        count={selectedCount}
+      />
 
       {/* Status bar */}
       <StatusBar status={syncStatus} lastSyncedAt={lastSyncedAt} error={syncError} />

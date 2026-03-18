@@ -6,9 +6,10 @@ interface Props {
   status: SyncStatus;
   disabled: boolean;
   onSync: () => void;
+  count: number;
 }
 
-export function SyncButton({ status, disabled, onSync }: Props) {
+export function SyncButton({ status, disabled, onSync, count }: Props) {
   const syncing = status === 'syncing';
 
   return (
@@ -32,7 +33,7 @@ export function SyncButton({ status, disabled, onSync }: Props) {
         ) : (
           <>
             <CalendarCheck size={18} />
-            Sync to Google Calendar
+            Sync {count} shift{count !== 1 ? 's' : ''} to Calendar
           </>
         )}
       </button>
