@@ -14,7 +14,6 @@ export interface SyncRecord {
 }
 
 export interface Settings {
-  dateRange: 'week' | '2weeks' | 'month';
   autoSync: boolean;
   timezone: string;
 }
@@ -51,7 +50,6 @@ export type Message =
   | { type: 'CLEAR_RESULT'; success: boolean; error?: string };
 
 export const DEFAULT_SETTINGS: Settings = {
-  dateRange: '2weeks',
   autoSync: false,
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 };

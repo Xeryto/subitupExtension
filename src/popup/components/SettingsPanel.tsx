@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Settings } from '../../lib/types';
-import { ChevronDown, ChevronUp, Trash2, Globe, CalendarRange, Zap } from 'lucide-react';
+import { ChevronDown, ChevronUp, Trash2, Globe, Zap } from 'lucide-react';
 
 interface Props {
   settings: Settings;
@@ -26,23 +26,6 @@ export function SettingsPanel({ settings, onUpdate, onClearEvents, clearing }: P
 
       {open && (
         <div className="px-4 pb-3 space-y-3">
-          {/* Date range */}
-          <div className="flex items-center justify-between">
-            <label className="flex items-center gap-1.5 text-xs text-text/60">
-              <CalendarRange size={14} />
-              Date range
-            </label>
-            <select
-              value={settings.dateRange}
-              onChange={e => onUpdate({ ...settings, dateRange: e.target.value as Settings['dateRange'] })}
-              className="text-xs bg-white/60 border border-primary/20 rounded px-2 py-1 text-text cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/30"
-            >
-              <option value="week">This week</option>
-              <option value="2weeks">2 weeks</option>
-              <option value="month">This month</option>
-            </select>
-          </div>
-
           {/* Auto-sync */}
           <div className="flex items-center justify-between">
             <label htmlFor="auto-sync" className="flex items-center gap-1.5 text-xs text-text/60">
