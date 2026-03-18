@@ -5,7 +5,7 @@ import * as caldav from './apple-caldav';
 
 const CALENDAR_NAME = 'SubItUp Shifts';
 
-function shiftToIcal(shift: Shift): string {
+function shiftToIcal(shift: Shift, sequence = 0): string {
   const uid = `subitup-${shift.id}@subitup-sync`;
   const now = toIcsUtc(new Date().toISOString());
   const lines = [
@@ -18,6 +18,7 @@ function shiftToIcal(shift: Shift): string {
     `DTSTART:${toIcsUtc(shift.start)}`,
     `DTEND:${toIcsUtc(shift.end)}`,
     `SUMMARY:${escapeIcs(shift.title)}`,
+    `SEQUENCE:${sequence}`,
   ];
   if (shift.location) lines.push(`LOCATION:${escapeIcs(shift.location)}`);
   lines.push('END:VEVENT', 'END:VCALENDAR');
@@ -34,31 +35,34 @@ function escapeIcs(text: string): string {
 }
 
 function eventUid(shiftId: string): string {
-  return `subitup-${shiftId}@subitup-sync`;
+  return `subitup-${shiftId}`;
 }
 
 export class AppleProvider implements CalendarProvider {
   readonly name = 'apple';
   private calendarHome: string | null = null;
+  private calendarUrl: string | null = null;
 
   constructor(private creds: AppleCredentials) {}
 
   async getOrCreateCalendar(): Promise<string> {
+    if (this.calendarUrl) return this.calendarUrl;
     if (!this.calendarHome) {
       this.calendarHome = await caldav.discoverCalendarHome(this.creds);
     }
-    return caldav.getOrCreateCalendar(this.creds, this.calendarHome, CALENDAR_NAME);
+    this.calendarUrl = await caldav.getOrCreateCalendar(this.creds, this.calendarHome, CALENDAR_NAME);
+    return this.calendarUrl;
   }
 
   async createEvent(calendarId: string, shift: Shift): Promise<CalendarEvent> {
     const uid = eventUid(shift.id);
-    const ical = shiftToIcal(shift);
+    const ical = shiftToIcal(shift, 0);
     const etag = await caldav.putEvent(this.creds, calendarId, uid, ical);
     return { id: uid, etag };
   }
 
   async updateEvent(calendarId: string, eventId: string, shift: Shift): Promise<CalendarEvent> {
-    const ical = shiftToIcal(shift);
+    const ical = shiftToIcal(shift, 1);
     const etag = await caldav.putEvent(this.creds, calendarId, eventId, ical);
     return { id: eventId, etag };
   }

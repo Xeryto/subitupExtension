@@ -3,6 +3,11 @@ export interface AppleCredentials {
   appSpecificPassword: string;
 }
 
+function resolveUrl(path: string, responseUrl: string): string {
+  if (path.startsWith('http')) return path;
+  return `${new URL(responseUrl).origin}${path}`;
+}
+
 function authHeader(creds: AppleCredentials): string {
   return 'Basic ' + btoa(`${creds.email}:${creds.appSpecificPassword}`);
 }
@@ -47,7 +52,7 @@ export async function discoverCalendarHome(creds: AppleCredentials): Promise<str
   if (!principalUrl) throw new Error('Could not find CalDAV principal URL');
 
   // Step 2: Find calendar home set
-  const homeBase = principalUrl.startsWith('http') ? principalUrl : `https://caldav.icloud.com${principalUrl}`;
+  const homeBase = resolveUrl(principalUrl, principalRes.url);
   const homeRes = await caldavRequest(
     homeBase,
     'PROPFIND',
@@ -65,7 +70,7 @@ export async function discoverCalendarHome(creds: AppleCredentials): Promise<str
   const homeUrl = extractHref(homeXml, 'calendar-home-set');
   if (!homeUrl) throw new Error('Could not find calendar home set');
 
-  return homeUrl.startsWith('http') ? homeUrl : `https://caldav.icloud.com${homeUrl}`;
+  return resolveUrl(homeUrl, homeRes.url);
 }
 
 // Find existing calendar by name or create new one
@@ -94,7 +99,7 @@ export async function getOrCreateCalendar(
   // Parse responses to find matching calendar
   const existing = findCalendarByName(listXml, calendarName);
   if (existing) {
-    return existing.startsWith('http') ? existing : `https://caldav.icloud.com${existing}`;
+    return resolveUrl(existing, listRes.url);
   }
 
   // Create new calendar
@@ -113,6 +118,9 @@ export async function getOrCreateCalendar(
   </d:set>
 </c:mkcalendar>`
   );
+  if (mkRes.status === 403 || mkRes.status === 405) {
+    throw new Error(`Could not auto-create calendar. Please create a calendar named "SubItUp Shifts" in iCloud, then retry.`);
+  }
   if (!mkRes.ok && mkRes.status !== 201) {
     throw new Error(`CalDAV create calendar failed: ${mkRes.status}`);
   }
