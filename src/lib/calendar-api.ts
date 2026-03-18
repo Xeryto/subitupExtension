@@ -131,11 +131,12 @@ export async function eventExists(
   eventId: string
 ): Promise<boolean> {
   try {
-    await apiRequest<CalendarEvent>(
+    const event = await apiRequest<CalendarEvent & { status?: string }>(
       token,
       `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`
     );
-    return true;
+    // Google marks deleted events as "cancelled" instead of actually deleting them
+    return event.status !== 'cancelled';
   } catch {
     return false;
   }
