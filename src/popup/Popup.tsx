@@ -172,6 +172,8 @@ export function Popup() {
   }, [shifts, selectedIds, activeProvider, setLastSyncedAt]);
 
   const handleClearEvents = useCallback(() => {
+    const providerLabel = activeProvider === 'google' ? 'Google' : 'Apple';
+    if (!window.confirm(`Delete all synced events from ${providerLabel} Calendar? This cannot be undone.`)) return;
     setClearing(true);
     safeSendMessage({ type: 'CLEAR_SYNCED_EVENTS', provider: activeProvider }, (res) => {
       setClearing(false);
