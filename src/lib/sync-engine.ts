@@ -22,15 +22,11 @@ export async function syncShifts(provider: CalendarProvider, shifts: Shift[]): P
   const recordsKey = syncRecordsKey(provider.name);
   const syncedKey = lastSyncedKey(provider.name);
 
-  console.log(`[Sync:${provider.name}] Starting sync for`, shifts.length, 'shifts');
-
   const calendarId = await provider.getOrCreateCalendar();
-  console.log(`[Sync:${provider.name}] Calendar ID:`, calendarId);
 
   const storage = await chrome.storage.local.get(recordsKey);
   const records: SyncRecord[] = storage[recordsKey] || [];
   const recordMap = new Map(records.map(r => [r.shiftId, r]));
-  console.log(`[Sync:${provider.name}] Existing records:`, records.length);
 
   const newRecords: SyncRecord[] = [];
   const processedShiftIds = new Set<string>();
@@ -42,7 +38,6 @@ export async function syncShifts(provider: CalendarProvider, shifts: Shift[]): P
 
     try {
       if (!existing) {
-        console.log(`[Sync:${provider.name}] Creating:`, shift.title);
         const event = await provider.createEvent(calendarId, shift);
         newRecords.push({
           shiftId: shift.id,
@@ -52,7 +47,6 @@ export async function syncShifts(provider: CalendarProvider, shifts: Shift[]): P
         });
         result.created++;
       } else if (existing.hash !== hash) {
-        console.log(`[Sync:${provider.name}] Updating:`, shift.title);
         await provider.updateEvent(calendarId, existing.calendarEventId, shift);
         newRecords.push({
           ...existing,
@@ -65,7 +59,6 @@ export async function syncShifts(provider: CalendarProvider, shifts: Shift[]): P
         if (exists) {
           newRecords.push(existing);
         } else {
-          console.log(`[Sync:${provider.name}] Recreating deleted:`, shift.title);
           const event = await provider.createEvent(calendarId, shift);
           newRecords.push({
             shiftId: shift.id,

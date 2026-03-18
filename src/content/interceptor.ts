@@ -14,7 +14,6 @@ function isScheduleUrl(url: string): boolean {
 }
 
 function sendToExtension(data: unknown) {
-  console.log('[SubItUp Sync] Intercepted schedule data:', Array.isArray(data) ? `${data.length} items` : typeof data, data);
   window.postMessage({ type: '__SUBITUP_SYNC_DATA__', data }, '*');
 }
 
@@ -24,9 +23,6 @@ const origSend = XMLHttpRequest.prototype.send;
 
 XMLHttpRequest.prototype.open = function (method: string, url: string | URL, ...rest: any[]) {
   (this as any).__subitupUrl = String(url);
-  if (String(url).includes('subitup.com')) {
-    console.log('[SubItUp Sync] XHR open:', method, String(url), 'match:', isScheduleUrl(String(url)));
-  }
   return origOpen.apply(this, [method, url, ...rest] as any);
 };
 

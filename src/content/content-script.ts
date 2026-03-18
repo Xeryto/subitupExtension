@@ -2,10 +2,7 @@
 window.addEventListener('message', (event) => {
   if (event.source !== window) return;
   if (event.data?.type === '__SUBITUP_SYNC_DATA__' && event.data.data) {
-    console.log('[SubItUp Sync] Content script received data, forwarding to service worker');
-    chrome.runtime.sendMessage({ type: 'INTERCEPTED_DATA', data: event.data.data }, (response) => {
-      console.log('[SubItUp Sync] Service worker response:', response);
-    });
+    chrome.runtime.sendMessage({ type: 'INTERCEPTED_DATA', data: event.data.data });
   }
 });
 
