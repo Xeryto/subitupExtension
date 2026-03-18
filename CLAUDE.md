@@ -3,6 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 - Make atomic git commits after each logical change. Don't wait to be asked.
+- After any change that touches behavior described in README.md or CLAUDE.md (architecture, auth, storage keys, sync flow, security model), update those docs to match before committing.
 
 ## Commands
 
