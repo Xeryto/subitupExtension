@@ -7,7 +7,8 @@
   "host_permissions": [
     "https://*.subitup.com/*",
     "https://www.googleapis.com/*",
-    "https://caldav.icloud.com/*"
+    "https://caldav.icloud.com/*",
+    "https://*.icloud.com/*"
   ],
   "oauth2": {
     "client_id": "429501987868-b96j7jb0e48kp8qtgfq814d0jaoetbdb.apps.googleusercontent.com",
