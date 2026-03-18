@@ -35,12 +35,15 @@ function escapeIcs(text: string): string {
 }
 
 function eventUid(shiftId: string): string {
-  return `subitup-${shiftId}`;
+  const safe = shiftId.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `subitup-${safe}`;
 }
 
-// Strip legacy @subitup-sync suffix from stored calendarEventIds
+// Strip legacy @subitup-sync suffix and convert legacy base64 IDs to base64url
 function normalizeUid(uid: string): string {
-  return uid.replace(/@subitup-sync$/, '');
+  const stripped = uid.replace(/@subitup-sync$/, '');
+  // Convert any remaining standard base64 chars to base64url
+  return stripped.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 export class AppleProvider implements CalendarProvider {

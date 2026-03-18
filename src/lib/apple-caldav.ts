@@ -21,11 +21,11 @@ async function caldavRequest(
 ): Promise<Response> {
   const headers: Record<string, string> = {
     Authorization: authHeader(creds),
-    ...extraHeaders,
   };
   if (body) {
     headers['Content-Type'] = 'application/xml; charset=utf-8';
   }
+  Object.assign(headers, extraHeaders);
   const res = await fetch(url, { method, headers, body });
   if (res.status === 401) throw new Error('AUTH_EXPIRED');
   return res;
