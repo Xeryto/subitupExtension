@@ -203,37 +203,37 @@ function extractHref(xml: string, tagName: string): string | null {
 }
 
 function findCalendarByName(xml: string, name: string): string | null {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xml, 'text/xml');
-  const responses = doc.getElementsByTagNameNS('DAV:', 'response');
-  for (let i = 0; i < responses.length; i++) {
-    const resp = responses[i];
-    const displayName = resp.getElementsByTagNameNS('DAV:', 'displayname')[0];
-    const resourceType = resp.getElementsByTagNameNS('DAV:', 'resourcetype')[0];
-    if (!displayName || !resourceType) continue;
-    // Must be a calendar
-    const calTag = resourceType.getElementsByTagNameNS('urn:ietf:params:xml:ns:caldav', 'calendar')[0];
-    if (!calTag) continue;
-    if (displayName.textContent?.trim() === name) {
-      const href = resp.getElementsByTagNameNS('DAV:', 'href')[0];
-      return href?.textContent?.trim() || null;
-    }
+  const blocks: string[] = [];
+  const parts = xml.split(/(<[^>]*:?response[^>]*>)/i);
+  let inside = false;
+  let current = '';
+  for (const part of parts) {
+    if (/<[^/][^>]*:?response[^>]*>/i.test(part)) { inside = true; current = ''; continue; }
+    if (/<\/[^>]*:?response[^>]*>/i.test(part)) { if (inside) blocks.push(current); inside = false; continue; }
+    if (inside) current += part;
+  }
+
+  for (const block of blocks) {
+    // Must be a calendar resourcetype
+    if (!/:?calendar[\s/>]/i.test(block)) continue;
+    // Extract displayname
+    const nameMatch = block.match(/<[^>]*:?displayname[^>]*>([^<]*)<\//i);
+    if (!nameMatch || nameMatch[1].trim() !== name) continue;
+    // Extract href
+    const hrefMatch = block.match(/<[^>]*:?href[^>]*>([^<]+)<\//i);
+    return hrefMatch ? hrefMatch[1].trim() : null;
   }
   return null;
 }
 
-function extractEventUids(xml: string, calendarUrl: string): string[] {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xml, 'text/xml');
-  const responses = doc.getElementsByTagNameNS('DAV:', 'response');
+function extractEventUids(xml: string, _calendarUrl: string): string[] {
   const uids: string[] = [];
-  for (let i = 0; i < responses.length; i++) {
-    const href = responses[i].getElementsByTagNameNS('DAV:', 'href')[0]?.textContent?.trim();
-    if (!href || !href.endsWith('.ics')) continue;
-    // Extract UID from filename
-    const parts = href.split('/');
-    const filename = parts[parts.length - 1];
-    uids.push(filename.replace('.ics', ''));
+  const hrefPattern = /<[^>]*:?href[^>]*>([^<]+\.ics)<\//gi;
+  let m: RegExpExecArray | null;
+  while ((m = hrefPattern.exec(xml)) !== null) {
+    const href = m[1].trim();
+    const filename = href.split('/').pop() ?? '';
+    if (filename) uids.push(filename.replace(/\.ics$/i, ''));
   }
   return uids;
 }
