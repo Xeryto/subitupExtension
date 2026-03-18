@@ -1,11 +1,14 @@
 import { parseSubItUpResponse } from '../lib/shift-parser';
 import { syncShifts, clearSyncedEvents } from '../lib/sync-engine';
-import { Shift, UserInfo, DEFAULT_SETTINGS } from '../lib/types';
+import { Shift, UserInfo, AppleCredentials, CalendarProviderType, DEFAULT_SETTINGS } from '../lib/types';
 import { GoogleProvider } from '../lib/google-provider';
+import { AppleProvider } from '../lib/apple-provider';
+import { CalendarProvider } from '../lib/calendar-provider';
 
 const DISPLAY_SHIFTS_KEY = 'displayShifts';  // Latest view — replaced on each API response
 const ALL_SHIFTS_KEY = 'allShifts';          // Accumulated — merged, never deleted
 const TOKEN_KEY = 'authToken';
+const APPLE_CREDS_KEY = 'appleCredentials';
 
 // Dev (unpacked) uses launchWebAuthFlow; production uses getAuthToken
 const isProduction = !!chrome.runtime.getManifest().update_url;
@@ -75,46 +78,15 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
     }
 
     case 'SYNC_TO_CALENDAR': {
-      const token = await getAuthToken(false);
-      if (!token) return { success: false, error: 'Not authenticated' };
-
+      const providerType = (message.provider as string) || 'google';
       const storage = await chrome.storage.local.get(ALL_SHIFTS_KEY);
       const shifts: Shift[] = storage[ALL_SHIFTS_KEY] || [];
       if (shifts.length === 0) return { success: false, error: 'No shifts to sync' };
-
-      try {
-        const provider = new GoogleProvider(token);
-        const result = await syncShifts(provider, shifts);
-        updateBadgeColor('#22C55E');
-        return {
-          success: true,
-          syncedCount: result.created + result.updated,
-          ...result,
-        };
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg === 'AUTH_EXPIRED') {
-          await chrome.storage.local.remove(TOKEN_KEY);
-          if (isProduction) {
-            chrome.identity.removeCachedAuthToken({ token });
-          }
-          const newToken = await getAuthToken(false);
-          if (newToken) {
-            const storage2 = await chrome.storage.local.get(ALL_SHIFTS_KEY);
-            const provider = new GoogleProvider(newToken);
-            const result = await syncShifts(provider, storage2[ALL_SHIFTS_KEY] || []);
-            return { success: true, syncedCount: result.created + result.updated, ...result };
-          }
-        }
-        updateBadgeColor('#EF4444');
-        return { success: false, error: msg };
-      }
+      return doSync(providerType as CalendarProviderType, shifts);
     }
 
     case 'SYNC_SELECTED': {
-      const token = await getAuthToken(false);
-      if (!token) return { success: false, error: 'Not authenticated' };
-
+      const providerType = (message.provider as string) || 'google';
       const shifts = message.shifts as Shift[];
       if (!shifts || shifts.length === 0) return { success: false, error: 'No shifts selected' };
 
@@ -125,30 +97,7 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
       for (const s of shifts) map.set(s.id, s);
       await chrome.storage.local.set({ [ALL_SHIFTS_KEY]: Array.from(map.values()) });
 
-      try {
-        const provider = new GoogleProvider(token);
-        const result = await syncShifts(provider, shifts);
-        updateBadgeColor('#22C55E');
-        return {
-          success: true,
-          syncedCount: result.created + result.updated,
-          ...result,
-        };
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg === 'AUTH_EXPIRED') {
-          await chrome.storage.local.remove(TOKEN_KEY);
-          if (isProduction) chrome.identity.removeCachedAuthToken({ token });
-          const newToken = await getAuthToken(false);
-          if (newToken) {
-            const provider = new GoogleProvider(newToken);
-            const result = await syncShifts(provider, shifts);
-            return { success: true, syncedCount: result.created + result.updated, ...result };
-          }
-        }
-        updateBadgeColor('#EF4444');
-        return { success: false, error: msg };
-      }
+      return doSync(providerType as CalendarProviderType, shifts);
     }
 
     case 'GET_AUTH_TOKEN': {
@@ -191,10 +140,10 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
     }
 
     case 'CLEAR_SYNCED_EVENTS': {
-      const token = await getAuthToken(false);
-      if (!token) return { success: false, error: 'Not authenticated' };
+      const providerType = (message.provider as string) || 'google';
       try {
-        const provider = new GoogleProvider(token);
+        const provider = await getProvider(providerType as CalendarProviderType);
+        if (!provider) return { success: false, error: `${providerType} not authenticated` };
         const count = await clearSyncedEvents(provider);
         return { success: true, count };
       } catch (err) {
@@ -202,8 +151,76 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
       }
     }
 
+    case 'VALIDATE_APPLE_CREDENTIALS': {
+      const creds = message.credentials as AppleCredentials;
+      try {
+        const { discoverCalendarHome } = await import('../lib/apple-caldav');
+        await discoverCalendarHome(creds);
+        await chrome.storage.local.set({ [APPLE_CREDS_KEY]: creds });
+        return { success: true };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg === 'AUTH_EXPIRED') return { success: false, error: 'Invalid credentials' };
+        return { success: false, error: msg };
+      }
+    }
+
+    case 'GET_APPLE_CREDENTIALS': {
+      const stored = await chrome.storage.local.get(APPLE_CREDS_KEY);
+      return { credentials: stored[APPLE_CREDS_KEY] || null };
+    }
+
+    case 'DISCONNECT_APPLE': {
+      await chrome.storage.local.remove([APPLE_CREDS_KEY, 'syncRecords_apple', 'lastSyncedAt_apple']);
+      return { success: true };
+    }
+
     default:
       return { error: 'Unknown message type' };
+  }
+}
+
+// --- Provider factory ---
+
+async function getProvider(type: CalendarProviderType): Promise<CalendarProvider | null> {
+  if (type === 'google') {
+    const token = await getAuthToken(false);
+    if (!token) return null;
+    return new GoogleProvider(token);
+  }
+  if (type === 'apple') {
+    const stored = await chrome.storage.local.get(APPLE_CREDS_KEY);
+    const creds = stored[APPLE_CREDS_KEY] as AppleCredentials | undefined;
+    if (!creds) return null;
+    return new AppleProvider(creds);
+  }
+  return null;
+}
+
+async function doSync(providerType: CalendarProviderType, shifts: Shift[]): Promise<unknown> {
+  try {
+    const provider = await getProvider(providerType);
+    if (!provider) return { success: false, error: `${providerType} not authenticated` };
+    const result = await syncShifts(provider, shifts);
+    updateBadgeColor('#22C55E');
+    return { success: true, syncedCount: result.created + result.updated, ...result };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg === 'AUTH_EXPIRED' && providerType === 'google') {
+      // Retry with fresh Google token
+      await chrome.storage.local.remove(TOKEN_KEY);
+      const token = await getAuthToken(false);
+      if (token) {
+        const provider = new GoogleProvider(token);
+        const result = await syncShifts(provider, shifts);
+        return { success: true, syncedCount: result.created + result.updated, ...result };
+      }
+    }
+    updateBadgeColor('#EF4444');
+    const userMsg = msg === 'AUTH_EXPIRED' && providerType === 'apple'
+      ? 'Apple credentials expired — reconnect in settings'
+      : msg;
+    return { success: false, error: userMsg };
   }
 }
 

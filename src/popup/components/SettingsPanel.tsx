@@ -7,9 +7,10 @@ interface Props {
   onUpdate: (settings: Settings) => void;
   onClearEvents: () => void;
   clearing: boolean;
+  providerName?: string;
 }
 
-export function SettingsPanel({ settings, onUpdate, onClearEvents, clearing }: Props) {
+export function SettingsPanel({ settings, onUpdate, onClearEvents, clearing, providerName }: Props) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -65,7 +66,7 @@ export function SettingsPanel({ settings, onUpdate, onClearEvents, clearing }: P
             className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs text-error/80 border border-error/20 rounded-lg cursor-pointer hover:bg-error/5 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-error/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Trash2 size={14} />
-            {clearing ? 'Clearing...' : 'Clear synced events'}
+            {clearing ? 'Clearing...' : `Clear ${providerName || ''} synced events`}
           </button>
         </div>
       )}

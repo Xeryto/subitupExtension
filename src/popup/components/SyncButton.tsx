@@ -7,9 +7,10 @@ interface Props {
   disabled: boolean;
   onSync: () => void;
   count: number;
+  providerName?: string;
 }
 
-export function SyncButton({ status, disabled, onSync, count }: Props) {
+export function SyncButton({ status, disabled, onSync, count, providerName }: Props) {
   const syncing = status === 'syncing';
 
   return (
@@ -33,7 +34,7 @@ export function SyncButton({ status, disabled, onSync, count }: Props) {
         ) : (
           <>
             <CalendarCheck size={18} />
-            Sync {count} shift{count !== 1 ? 's' : ''} to Calendar
+            Sync {count} shift{count !== 1 ? 's' : ''} to {providerName || 'Calendar'}
           </>
         )}
       </button>

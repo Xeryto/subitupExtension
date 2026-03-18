@@ -1,9 +1,11 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { Shift, UserInfo, Settings, SyncStatus, DEFAULT_SETTINGS } from '../lib/types';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Shift, UserInfo, Settings, SyncStatus, AppleCredentials, CalendarProviderType, DEFAULT_SETTINGS } from '../lib/types';
 import { formatDateRange } from '../utils/date';
 import { generateIcsBlob } from '../lib/ics-export';
 import { useChromeStorage } from './hooks/useChromeStorage';
 import { AuthSection } from './components/AuthSection';
+import { AppleAuth } from './components/AppleAuth';
+import { ProviderSelector } from './components/ProviderSelector';
 import { ShiftList } from './components/ShiftList';
 import { SyncButton } from './components/SyncButton';
 import { StatusBar } from './components/StatusBar';
@@ -18,15 +20,34 @@ export function Popup() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [syncError, setSyncError] = useState<string | null>(null);
-  const [lastSyncedAt, setLastSyncedAt] = useChromeStorage<string | null>('lastSyncedAt_google', null);
   const [settings, setSettings] = useChromeStorage<Settings>('settings', DEFAULT_SETTINGS);
   const [clearing, setClearing] = useState(false);
 
-  // Load user info
+  // Apple state
+  const [appleCreds, setAppleCreds] = useState<AppleCredentials | null>(null);
+  const [appleAuthLoading, setAppleAuthLoading] = useState(false);
+  const [appleAuthError, setAppleAuthError] = useState<string | null>(null);
+
+  const activeProvider = settings.activeProvider || 'google';
+
+  // Provider-specific last synced
+  const [lastSyncedGoogle, setLastSyncedGoogle] = useChromeStorage<string | null>('lastSyncedAt_google', null);
+  const [lastSyncedApple, setLastSyncedApple] = useChromeStorage<string | null>('lastSyncedAt_apple', null);
+  const lastSyncedAt = activeProvider === 'google' ? lastSyncedGoogle : lastSyncedApple;
+  const setLastSyncedAt = activeProvider === 'google' ? setLastSyncedGoogle : setLastSyncedApple;
+
+  // Load Google user info
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'GET_USER_INFO' }, (res) => {
       setUser(res?.user ?? null);
       setAuthLoading(false);
+    });
+  }, []);
+
+  // Load Apple credentials
+  useEffect(() => {
+    chrome.runtime.sendMessage({ type: 'GET_APPLE_CREDENTIALS' }, (res) => {
+      setAppleCreds(res?.credentials ?? null);
     });
   }, []);
 
@@ -69,6 +90,14 @@ export function Popup() {
   const selectedCount = selectedIds.size;
   const allSelected = selectedCount === shifts.length && shifts.length > 0;
 
+  // Provider switch
+  const handleProviderChange = useCallback((p: CalendarProviderType) => {
+    setSettings({ ...settings, activeProvider: p });
+    setSyncStatus('idle');
+    setSyncError(null);
+  }, [settings, setSettings]);
+
+  // Google auth
   const handleSignIn = useCallback(() => {
     setAuthLoading(true);
     setSyncError(null);
@@ -92,13 +121,34 @@ export function Popup() {
     });
   }, []);
 
+  // Apple auth
+  const handleAppleConnect = useCallback((creds: AppleCredentials) => {
+    setAppleAuthLoading(true);
+    setAppleAuthError(null);
+    chrome.runtime.sendMessage({ type: 'VALIDATE_APPLE_CREDENTIALS', credentials: creds }, (res) => {
+      setAppleAuthLoading(false);
+      if (res?.success) {
+        setAppleCreds(creds);
+      } else {
+        setAppleAuthError(res?.error ?? 'Validation failed');
+      }
+    });
+  }, []);
+
+  const handleAppleDisconnect = useCallback(() => {
+    chrome.runtime.sendMessage({ type: 'DISCONNECT_APPLE' }, () => {
+      setAppleCreds(null);
+    });
+  }, []);
+
+  // Sync
   const handleSync = useCallback(() => {
     const selected = shifts.filter(s => selectedIds.has(s.id));
     if (selected.length === 0) return;
 
     setSyncStatus('syncing');
     setSyncError(null);
-    chrome.runtime.sendMessage({ type: 'SYNC_SELECTED', shifts: selected }, (res) => {
+    chrome.runtime.sendMessage({ type: 'SYNC_SELECTED', shifts: selected, provider: activeProvider }, (res) => {
       if (res?.success) {
         setSyncStatus('success');
         setLastSyncedAt(new Date().toISOString());
@@ -107,18 +157,18 @@ export function Popup() {
         setSyncError(res?.error ?? 'Sync failed');
       }
     });
-  }, [shifts, selectedIds, setLastSyncedAt]);
+  }, [shifts, selectedIds, activeProvider, setLastSyncedAt]);
 
   const handleClearEvents = useCallback(() => {
     setClearing(true);
-    chrome.runtime.sendMessage({ type: 'CLEAR_SYNCED_EVENTS' }, (res) => {
+    chrome.runtime.sendMessage({ type: 'CLEAR_SYNCED_EVENTS', provider: activeProvider }, (res) => {
       setClearing(false);
       if (!res?.success) {
         setSyncError(res?.error ?? 'Failed to clear events');
         setSyncStatus('error');
       }
     });
-  }, []);
+  }, [activeProvider]);
 
   const handleDownloadIcs = useCallback(() => {
     const selected = shifts.filter(s => selectedIds.has(s.id));
@@ -132,7 +182,8 @@ export function Popup() {
     URL.revokeObjectURL(url);
   }, [shifts, selectedIds, settings.timezone]);
 
-  const syncDisabled = !user || selectedCount === 0 || syncStatus === 'syncing';
+  const isAuthenticated = activeProvider === 'google' ? !!user : !!appleCreds;
+  const syncDisabled = !isAuthenticated || selectedCount === 0 || syncStatus === 'syncing';
 
   return (
     <div className="flex flex-col h-full min-h-[500px] bg-bg">
@@ -144,13 +195,26 @@ export function Popup() {
         </div>
       </header>
 
-      {/* Auth */}
-      <AuthSection
-        user={user}
-        loading={authLoading}
-        onSignIn={handleSignIn}
-        onSignOut={handleSignOut}
-      />
+      {/* Provider selector */}
+      <ProviderSelector active={activeProvider} onChange={handleProviderChange} />
+
+      {/* Auth — conditional on provider */}
+      {activeProvider === 'google' ? (
+        <AuthSection
+          user={user}
+          loading={authLoading}
+          onSignIn={handleSignIn}
+          onSignOut={handleSignOut}
+        />
+      ) : (
+        <AppleAuth
+          credentials={appleCreds}
+          onConnect={handleAppleConnect}
+          onDisconnect={handleAppleDisconnect}
+          loading={appleAuthLoading}
+          error={appleAuthError}
+        />
+      )}
 
       <div className="border-t border-primary/10" />
 
@@ -196,6 +260,7 @@ export function Popup() {
         disabled={syncDisabled}
         onSync={handleSync}
         count={selectedCount}
+        providerName={activeProvider === 'google' ? 'Google' : 'Apple'}
       />
 
       {/* ICS download */}
@@ -221,6 +286,7 @@ export function Popup() {
         onUpdate={setSettings}
         onClearEvents={handleClearEvents}
         clearing={clearing}
+        providerName={activeProvider === 'google' ? 'Google' : 'Apple'}
       />
     </div>
   );
