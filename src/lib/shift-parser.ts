@@ -1,5 +1,9 @@
 import { Shift } from './types';
 
+function safeDecode(str: string): string {
+  try { return safeDecode(str); } catch { return str; }
+}
+
 /**
  * Parse SubItUp schedule API responses into normalized Shift[].
  * Primary format: GetEmployeeScheduleData returns an array of shift objects.
@@ -60,12 +64,12 @@ function parseShiftItem(item: unknown): Shift[] {
   const shiftName = obj.ShiftName ?? obj.shiftName ?? '';
   let title: string;
   if (deptName && shiftName) {
-    title = `${decodeURIComponent(String(deptName))} — ${decodeURIComponent(String(shiftName))}`;
+    title = `${safeDecode(String(deptName))} — ${safeDecode(String(shiftName))}`;
   } else {
     title = String(
       shiftName || deptName || obj.position_name || obj.positionName || obj.position || obj.name || 'Shift'
     );
-    title = decodeURIComponent(title);
+    title = safeDecode(title);
   }
 
   // Location (SubItUp doesn't have a dedicated field, but ShiftNotes sometimes has it)
@@ -88,7 +92,7 @@ function parseShiftItem(item: unknown): Shift[] {
   if (!start || !end) return [];
 
   const shift: Shift = {
-    id: decodeURIComponent(id) || hashShift(title, start, end),
+    id: safeDecode(id) || hashShift(title, start, end),
     title: title.trim(),
     location,
     start,
