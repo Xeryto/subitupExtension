@@ -146,6 +146,18 @@ describe('getOrCreateCalendar', () => {
     expect(result).toBe('https://caldav.icloud.com/123/calendars/subitup-shifts/');
   });
 
+  it('throws on other MKCALENDAR failure (e.g. 500)', async () => {
+    const emptyListXml = `<d:multistatus xmlns:d="DAV:"><d:response><d:href>/123/calendars/</d:href><d:propstat><d:prop><d:displayname>X</d:displayname><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response></d:multistatus>`;
+
+    (fetch as jest.Mock)
+      .mockResolvedValueOnce(mockFetchResponse(207, emptyListXml, {}, homeUrl))
+      .mockResolvedValueOnce(mockFetchResponse(500));
+
+    await expect(getOrCreateCalendar(creds, homeUrl, 'SubItUp Shifts')).rejects.toThrow(
+      'CalDAV create calendar failed: 500'
+    );
+  });
+
   it('throws user-friendly error on MKCALENDAR 405', async () => {
     const emptyListXml = `<d:multistatus xmlns:d="DAV:"><d:response><d:href>/123/calendars/</d:href><d:propstat><d:prop><d:displayname>X</d:displayname><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response></d:multistatus>`;
 

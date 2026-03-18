@@ -1,4 +1,4 @@
-import { generateIcsString } from '../lib/ics-export';
+import { generateIcsString, generateIcsBlob } from '../lib/ics-export';
 import { Shift } from '../lib/types';
 
 const FROZEN_ISO = '20240101T000000Z';
@@ -107,5 +107,13 @@ describe('generateIcsString', () => {
     );
     expect(ics).toContain('20240317T090000Z');
     expect(ics).toContain('20240317T173000Z');
+  });
+});
+
+describe('generateIcsBlob', () => {
+  it('returns a Blob with text/calendar MIME type', () => {
+    const blob = generateIcsBlob([shift()], 'America/Chicago');
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.type).toBe('text/calendar;charset=utf-8');
   });
 });
