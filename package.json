@@ -1,7 +1,7 @@
 {
   "name": "subitup-sync",
   "version": "1.0.0",
-  "description": "Sync SubItUp shifts to Google Calendar",
+  "description": "Sync SubItUp shifts to Google Calendar or Apple Calendar",
   "scripts": {
     "build": "webpack --mode production",
     "dev": "webpack --mode development --watch",
