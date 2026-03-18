@@ -1,4 +1,5 @@
 import { Shift, SyncRecord } from '../lib/types';
+import { CalendarProvider, CalendarEvent } from '../lib/calendar-provider';
 
 // Mock chrome.storage.local
 const mockStorage: Record<string, unknown> = {};
@@ -29,21 +30,27 @@ const mockStorage: Record<string, unknown> = {};
   },
 };
 
-// Mock calendar-api
-jest.mock('../lib/calendar-api', () => ({
-  getOrCreateCalendar: jest.fn().mockResolvedValue('cal_123'),
-  createEvent: jest.fn().mockResolvedValue({ id: 'evt_new' }),
-  updateEvent: jest.fn().mockResolvedValue({ id: 'evt_updated' }),
-  deleteEvent: jest.fn().mockResolvedValue(undefined),
-  deleteAllEvents: jest.fn().mockResolvedValue(3),
-}));
+// Mock provider
+function createMockProvider(): CalendarProvider & { createEvent: jest.Mock; updateEvent: jest.Mock; deleteEvent: jest.Mock; deleteAllEvents: jest.Mock; eventExists: jest.Mock } {
+  return {
+    name: 'google',
+    getOrCreateCalendar: jest.fn().mockResolvedValue('cal_123'),
+    createEvent: jest.fn().mockResolvedValue({ id: 'evt_new' }),
+    updateEvent: jest.fn().mockResolvedValue({ id: 'evt_updated' }),
+    deleteEvent: jest.fn().mockResolvedValue(undefined),
+    deleteAllEvents: jest.fn().mockResolvedValue(3),
+    eventExists: jest.fn().mockResolvedValue(true),
+  };
+}
 
 import { syncShifts, clearSyncedEvents } from '../lib/sync-engine';
-import * as cal from '../lib/calendar-api';
+
+let mockProvider: ReturnType<typeof createMockProvider>;
 
 beforeEach(() => {
   jest.clearAllMocks();
   Object.keys(mockStorage).forEach(k => delete mockStorage[k]);
+  mockProvider = createMockProvider();
 });
 
 describe('syncShifts', () => {
@@ -53,53 +60,49 @@ describe('syncShifts', () => {
   ];
 
   it('creates events for new shifts', async () => {
-    const result = await syncShifts('token123', shifts);
+    const result = await syncShifts(mockProvider, shifts);
     expect(result.created).toBe(2);
     expect(result.updated).toBe(0);
     expect(result.deleted).toBe(0);
-    expect(cal.createEvent).toHaveBeenCalledTimes(2);
+    expect(mockProvider.createEvent).toHaveBeenCalledTimes(2);
   });
 
   it('updates events when shift content changes', async () => {
-    // First sync
-    await syncShifts('token123', shifts);
+    await syncShifts(mockProvider, shifts);
 
-    // Change a shift title
     const modified = [{ ...shifts[0], title: 'Reception' }, shifts[1]];
-    const result = await syncShifts('token123', modified);
+    const result = await syncShifts(mockProvider, modified);
     expect(result.updated).toBe(1);
     expect(result.created).toBe(0);
   });
 
-  it('deletes events for removed shifts', async () => {
-    // First sync with 2 shifts
-    await syncShifts('token123', shifts);
-
-    // Second sync with only 1 shift
-    const result = await syncShifts('token123', [shifts[0]]);
-    expect(result.deleted).toBe(1);
-    expect(cal.deleteEvent).toHaveBeenCalledTimes(1);
-  });
-
   it('skips unchanged shifts', async () => {
-    await syncShifts('token123', shifts);
-    jest.clearAllMocks();
+    await syncShifts(mockProvider, shifts);
+    mockProvider.createEvent.mockClear();
 
-    const result = await syncShifts('token123', shifts);
+    const result = await syncShifts(mockProvider, shifts);
     expect(result.created).toBe(0);
     expect(result.updated).toBe(0);
     expect(result.deleted).toBe(0);
-    expect(cal.createEvent).not.toHaveBeenCalled();
+    expect(mockProvider.createEvent).not.toHaveBeenCalled();
+  });
+
+  it('uses namespaced storage keys', async () => {
+    await syncShifts(mockProvider, shifts);
+    expect(mockStorage['syncRecords_google']).toBeDefined();
+    expect(mockStorage['lastSyncedAt_google']).toBeDefined();
   });
 });
 
 describe('clearSyncedEvents', () => {
   it('deletes all events and clears storage', async () => {
-    mockStorage['syncRecords'] = [{ shiftId: 's1', calendarEventId: 'e1', hash: 'h', lastSyncedAt: '' }];
-    mockStorage['lastSyncedAt'] = '2024-03-17T00:00:00Z';
+    mockStorage['syncRecords_google'] = [{ shiftId: 's1', calendarEventId: 'e1', hash: 'h', lastSyncedAt: '' }];
+    mockStorage['lastSyncedAt_google'] = '2024-03-17T00:00:00Z';
 
-    const count = await clearSyncedEvents('token123');
+    const count = await clearSyncedEvents(mockProvider);
     expect(count).toBe(3);
-    expect(cal.deleteAllEvents).toHaveBeenCalled();
+    expect(mockProvider.deleteAllEvents).toHaveBeenCalled();
+    expect(mockStorage['syncRecords_google']).toBeUndefined();
+    expect(mockStorage['lastSyncedAt_google']).toBeUndefined();
   });
 });

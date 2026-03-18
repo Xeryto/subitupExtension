@@ -17,7 +17,7 @@ export function Popup() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [syncError, setSyncError] = useState<string | null>(null);
-  const [lastSyncedAt, setLastSyncedAt] = useChromeStorage<string | null>('lastSyncedAt', null);
+  const [lastSyncedAt, setLastSyncedAt] = useChromeStorage<string | null>('lastSyncedAt_google', null);
   const [settings, setSettings] = useChromeStorage<Settings>('settings', DEFAULT_SETTINGS);
   const [clearing, setClearing] = useState(false);
 

@@ -1,6 +1,7 @@
 import { parseSubItUpResponse } from '../lib/shift-parser';
 import { syncShifts, clearSyncedEvents } from '../lib/sync-engine';
 import { Shift, UserInfo, DEFAULT_SETTINGS } from '../lib/types';
+import { GoogleProvider } from '../lib/google-provider';
 
 const DISPLAY_SHIFTS_KEY = 'displayShifts';  // Latest view — replaced on each API response
 const ALL_SHIFTS_KEY = 'allShifts';          // Accumulated — merged, never deleted
@@ -77,13 +78,13 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
       const token = await getAuthToken(false);
       if (!token) return { success: false, error: 'Not authenticated' };
 
-      // Sync from the accumulated pool, not just the current display
       const storage = await chrome.storage.local.get(ALL_SHIFTS_KEY);
       const shifts: Shift[] = storage[ALL_SHIFTS_KEY] || [];
       if (shifts.length === 0) return { success: false, error: 'No shifts to sync' };
 
       try {
-        const result = await syncShifts(token, shifts);
+        const provider = new GoogleProvider(token);
+        const result = await syncShifts(provider, shifts);
         updateBadgeColor('#22C55E');
         return {
           success: true,
@@ -93,16 +94,15 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg === 'AUTH_EXPIRED') {
-          // Clear stale token and retry silently
           await chrome.storage.local.remove(TOKEN_KEY);
           if (isProduction) {
-            const staleToken = token;
-            chrome.identity.removeCachedAuthToken({ token: staleToken });
+            chrome.identity.removeCachedAuthToken({ token });
           }
           const newToken = await getAuthToken(false);
           if (newToken) {
             const storage2 = await chrome.storage.local.get(ALL_SHIFTS_KEY);
-            const result = await syncShifts(newToken, storage2[ALL_SHIFTS_KEY] || []);
+            const provider = new GoogleProvider(newToken);
+            const result = await syncShifts(provider, storage2[ALL_SHIFTS_KEY] || []);
             return { success: true, syncedCount: result.created + result.updated, ...result };
           }
         }
@@ -118,7 +118,7 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
       const shifts = message.shifts as Shift[];
       if (!shifts || shifts.length === 0) return { success: false, error: 'No shifts selected' };
 
-      // Also merge selected shifts into the accumulated pool
+      // Merge selected shifts into accumulated pool
       const storage = await chrome.storage.local.get(ALL_SHIFTS_KEY);
       const existing: Shift[] = storage[ALL_SHIFTS_KEY] || [];
       const map = new Map(existing.map(s => [s.id, s]));
@@ -126,7 +126,8 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
       await chrome.storage.local.set({ [ALL_SHIFTS_KEY]: Array.from(map.values()) });
 
       try {
-        const result = await syncShifts(token, shifts);
+        const provider = new GoogleProvider(token);
+        const result = await syncShifts(provider, shifts);
         updateBadgeColor('#22C55E');
         return {
           success: true,
@@ -140,7 +141,8 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
           if (isProduction) chrome.identity.removeCachedAuthToken({ token });
           const newToken = await getAuthToken(false);
           if (newToken) {
-            const result = await syncShifts(newToken, shifts);
+            const provider = new GoogleProvider(newToken);
+            const result = await syncShifts(provider, shifts);
             return { success: true, syncedCount: result.created + result.updated, ...result };
           }
         }
@@ -192,7 +194,8 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
       const token = await getAuthToken(false);
       if (!token) return { success: false, error: 'Not authenticated' };
       try {
-        const count = await clearSyncedEvents(token);
+        const provider = new GoogleProvider(token);
+        const count = await clearSyncedEvents(provider);
         return { success: true, count };
       } catch (err) {
         return { success: false, error: err instanceof Error ? err.message : String(err) };
