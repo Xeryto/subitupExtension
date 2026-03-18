@@ -5,9 +5,9 @@ import * as caldav from './apple-caldav';
 
 const CALENDAR_NAME = 'SubItUp Shifts';
 
-function shiftToIcal(shift: Shift, timezone: string): string {
+function shiftToIcal(shift: Shift): string {
   const uid = `subitup-${shift.id}@subitup-sync`;
-  const now = formatIcsDate(new Date().toISOString());
+  const now = toIcsUtc(new Date().toISOString());
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -15,8 +15,8 @@ function shiftToIcal(shift: Shift, timezone: string): string {
     'BEGIN:VEVENT',
     `UID:${uid}`,
     `DTSTAMP:${now}`,
-    `DTSTART;TZID=${timezone}:${formatIcsDate(shift.start)}`,
-    `DTEND;TZID=${timezone}:${formatIcsDate(shift.end)}`,
+    `DTSTART:${toIcsUtc(shift.start)}`,
+    `DTEND:${toIcsUtc(shift.end)}`,
     `SUMMARY:${escapeIcs(shift.title)}`,
   ];
   if (shift.location) lines.push(`LOCATION:${escapeIcs(shift.location)}`);
@@ -24,8 +24,9 @@ function shiftToIcal(shift: Shift, timezone: string): string {
   return lines.join('\r\n') + '\r\n';
 }
 
-function formatIcsDate(iso: string): string {
-  return iso.replace(/[-:]/g, '').replace(/\.\d{3}/, '').replace('Z', 'Z');
+// Normalize any ISO string to iCal UTC format: 20260318T140000Z
+function toIcsUtc(iso: string): string {
+  return new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
 }
 
 function escapeIcs(text: string): string {
@@ -39,11 +40,8 @@ function eventUid(shiftId: string): string {
 export class AppleProvider implements CalendarProvider {
   readonly name = 'apple';
   private calendarHome: string | null = null;
-  private timezone: string;
 
-  constructor(private creds: AppleCredentials, timezone?: string) {
-    this.timezone = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-  }
+  constructor(private creds: AppleCredentials) {}
 
   async getOrCreateCalendar(): Promise<string> {
     if (!this.calendarHome) {
@@ -54,13 +52,13 @@ export class AppleProvider implements CalendarProvider {
 
   async createEvent(calendarId: string, shift: Shift): Promise<CalendarEvent> {
     const uid = eventUid(shift.id);
-    const ical = shiftToIcal(shift, this.timezone);
+    const ical = shiftToIcal(shift);
     const etag = await caldav.putEvent(this.creds, calendarId, uid, ical);
     return { id: uid, etag };
   }
 
   async updateEvent(calendarId: string, eventId: string, shift: Shift): Promise<CalendarEvent> {
-    const ical = shiftToIcal(shift, this.timezone);
+    const ical = shiftToIcal(shift);
     const etag = await caldav.putEvent(this.creds, calendarId, eventId, ical);
     return { id: eventId, etag };
   }
