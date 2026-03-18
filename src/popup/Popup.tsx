@@ -35,19 +35,26 @@ export function Popup() {
       setShiftsLoading(false);
     });
 
-    // Listen for new shifts from interception
-    const listener = (message: { type: string; shifts?: Shift[] }) => {
-      if (message.type === 'SHIFTS_UPDATED' && message.shifts) {
-        setShifts(message.shifts);
+    // Live-update when shifts change in storage
+    const listener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.capturedShifts) {
+        setShifts(changes.capturedShifts.newValue ?? []);
       }
     };
-    chrome.runtime.onMessage.addListener(listener);
-    return () => chrome.runtime.onMessage.removeListener(listener);
+    chrome.storage.local.onChanged.addListener(listener);
+    return () => chrome.storage.local.onChanged.removeListener(listener);
   }, []);
 
   const handleSignIn = useCallback(() => {
     setAuthLoading(true);
-    chrome.runtime.sendMessage({ type: 'GET_AUTH_TOKEN' }, () => {
+    setSyncError(null);
+    chrome.runtime.sendMessage({ type: 'GET_AUTH_TOKEN' }, (res) => {
+      if (res?.error) {
+        setSyncError(`Auth failed: ${res.error}`);
+        setSyncStatus('error');
+        setAuthLoading(false);
+        return;
+      }
       chrome.runtime.sendMessage({ type: 'GET_USER_INFO' }, (res) => {
         setUser(res?.user ?? null);
         setAuthLoading(false);
