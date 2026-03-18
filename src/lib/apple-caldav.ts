@@ -118,7 +118,10 @@ export async function getOrCreateCalendar(
   </d:set>
 </c:mkcalendar>`
   );
-  if (mkRes.status === 403 || mkRes.status === 405) {
+  if (mkRes.status === 403) {
+    return calPath; // calendar already exists at this path
+  }
+  if (mkRes.status === 405) {
     throw new Error(`Could not auto-create calendar. Please create a calendar named "SubItUp Shifts" in iCloud, then retry.`);
   }
   if (!mkRes.ok && mkRes.status !== 201) {
@@ -211,24 +214,18 @@ function extractHref(xml: string, tagName: string): string | null {
 }
 
 function findCalendarByName(xml: string, name: string): string | null {
-  const blocks: string[] = [];
-  const parts = xml.split(/(<[^>]*:?response[^>]*>)/i);
-  let inside = false;
-  let current = '';
-  for (const part of parts) {
-    if (/<[^/][^>]*:?response[^>]*>/i.test(part)) { inside = true; current = ''; continue; }
-    if (/<\/[^>]*:?response[^>]*>/i.test(part)) { if (inside) blocks.push(current); inside = false; continue; }
-    if (inside) current += part;
-  }
-
-  for (const block of blocks) {
-    // Must be a calendar resourcetype
-    if (!/:?calendar[\s/>]/i.test(block)) continue;
-    // Extract displayname
-    const nameMatch = block.match(/<[^>]*:?displayname[^>]*>([^<]*)<\//i);
+  // Match each DAV response block (handles default namespace and any prefix)
+  const responseRe = /<[^/!?][^>]*:?response\b[^>]*>([\s\S]*?)<\/[^>]*:?response\b[^>]*>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = responseRe.exec(xml)) !== null) {
+    const block = m[1];
+    // Must include a calendar resource type element
+    if (!/<[^>]*:?calendar[\s/>]/i.test(block)) continue;
+    // Match displayname
+    const nameMatch = block.match(/<[^>]*:?displayname\b[^>]*>([^<]*)<\//i);
     if (!nameMatch || nameMatch[1].trim() !== name) continue;
-    // Extract href
-    const hrefMatch = block.match(/<[^>]*:?href[^>]*>([^<]+)<\//i);
+    // Extract href from the full block (opening tag + content)
+    const hrefMatch = (m[0]).match(/<[^>]*:?href\b[^>]*>([^<]+)<\//i);
     return hrefMatch ? hrefMatch[1].trim() : null;
   }
   return null;
