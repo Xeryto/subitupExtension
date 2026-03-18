@@ -79,7 +79,12 @@ export async function syncShifts(provider: CalendarProvider, shifts: Shift[]): P
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[Sync:${provider.name}] Error:`, shift.title, msg);
-      if (msg === 'AUTH_EXPIRED') throw err;
+      if (msg === 'AUTH_EXPIRED') {
+        // Save partial progress so retry doesn't duplicate already-created events
+        const unprocessed = records.filter(r => !processedShiftIds.has(r.shiftId));
+        await chrome.storage.local.set({ [recordsKey]: [...newRecords, ...unprocessed] });
+        throw err;
+      }
       result.errors.push(`${shift.title}: ${msg}`);
     }
 

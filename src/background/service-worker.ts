@@ -14,6 +14,8 @@ const APPLE_CREDS_KEY = 'appleCredentials';
 // Dev (unpacked) uses launchWebAuthFlow; production uses getAuthToken
 const isProduction = !!chrome.runtime.getManifest().update_url;
 
+let syncInProgress = false;
+
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
   'https://www.googleapis.com/auth/calendar.calendars',
@@ -37,15 +39,15 @@ chrome.webRequest.onBeforeRequest.addListener(
 );
 
 // --- Message handler ---
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  handleMessage(message).then(sendResponse).catch(err => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  handleMessage(message, sender).then(sendResponse).catch(err => {
     console.error('Message handler error:', err);
     sendResponse({ error: err.message });
   });
   return true; // async response
 });
 
-async function handleMessage(message: { type: string; [key: string]: unknown }): Promise<unknown> {
+async function handleMessage(message: { type: string; [key: string]: unknown }, sender?: chrome.runtime.MessageSender): Promise<unknown> {
   switch (message.type) {
     case 'INTERCEPTED_DATA': {
       const newShifts = parseSubItUpResponse(message.data);
@@ -68,7 +70,7 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
           autoSyncPending = false;
           const s = await chrome.storage.local.get('settings');
           const p = { ...DEFAULT_SETTINGS, ...s.settings }.activeProvider;
-          handleMessage({ type: 'SYNC_TO_CALENDAR', provider: p });
+          handleMessage({ type: 'SYNC_TO_CALENDAR', provider: p }, undefined);
         }
       }
       return { success: true, count: newShifts.length };
@@ -136,8 +138,8 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
         if (isProduction) {
           chrome.identity.removeCachedAuthToken({ token });
         }
-        await chrome.storage.local.remove(TOKEN_KEY);
       }
+      await chrome.storage.local.remove([TOKEN_KEY, 'syncRecords_google', 'lastSyncedAt_google']);
       return { success: true };
     }
 
@@ -168,6 +170,8 @@ async function handleMessage(message: { type: string; [key: string]: unknown }):
     }
 
     case 'GET_APPLE_CREDENTIALS': {
+      // Only respond to popup/extension pages, not content scripts
+      if (sender?.tab) return { credentials: null };
       const stored = await chrome.storage.local.get(APPLE_CREDS_KEY);
       return { credentials: stored[APPLE_CREDS_KEY] || null };
     }
@@ -200,6 +204,8 @@ async function getProvider(type: CalendarProviderType): Promise<CalendarProvider
 }
 
 async function doSync(providerType: CalendarProviderType, shifts: Shift[]): Promise<unknown> {
+  if (syncInProgress) return { success: false, error: 'Sync already in progress' };
+  syncInProgress = true;
   try {
     const provider = await getProvider(providerType);
     if (!provider) return { success: false, error: `${providerType} not authenticated` };
@@ -209,12 +215,13 @@ async function doSync(providerType: CalendarProviderType, shifts: Shift[]): Prom
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg === 'AUTH_EXPIRED' && providerType === 'google') {
-      // Retry with fresh Google token
+      // Retry with fresh Google token; partial records already saved by sync-engine
       await chrome.storage.local.remove(TOKEN_KEY);
       const token = await getAuthToken(false);
       if (token) {
         const provider = new GoogleProvider(token);
         const result = await syncShifts(provider, shifts);
+        updateBadgeColor('#22C55E');
         return { success: true, syncedCount: result.created + result.updated, ...result };
       }
     }
@@ -223,6 +230,8 @@ async function doSync(providerType: CalendarProviderType, shifts: Shift[]): Prom
       ? 'Apple credentials expired — reconnect in settings'
       : msg;
     return { success: false, error: userMsg };
+  } finally {
+    syncInProgress = false;
   }
 }
 
