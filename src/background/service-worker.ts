@@ -170,8 +170,8 @@ async function handleMessage(message: { type: string; [key: string]: unknown }, 
     }
 
     case 'GET_APPLE_CREDENTIALS': {
-      // Only respond to popup/extension pages, not content scripts
-      if (sender?.tab) return { credentials: null };
+      // Only respond to our own extension pages (popup/iframe), not content scripts or other extensions
+      if (sender?.id !== chrome.runtime.id) return { credentials: null };
       const stored = await chrome.storage.local.get(APPLE_CREDS_KEY);
       return { credentials: stored[APPLE_CREDS_KEY] || null };
     }
