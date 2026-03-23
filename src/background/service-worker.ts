@@ -306,7 +306,7 @@ async function getAuthTokenDev(interactive: boolean): Promise<string | null> {
           chrome.storage.local.set({ [TOKEN_KEY]: token });
           resolve(token);
         } else {
-          console.error('No access_token in response:', responseUrl);
+          console.error('No access_token in OAuth response');
           (globalThis as any).__lastAuthError = 'No access token received';
           resolve(null);
         }
