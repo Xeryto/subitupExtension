@@ -1,10 +1,6 @@
-import { Shift, SyncRecord } from './types';
+import { Shift } from './types';
 import { computeShiftHash } from './shift-parser';
-import { CalendarProvider } from './calendar-provider';
-
-function syncRecordsKey(provider: string): string {
-  return `syncRecords_${provider}`;
-}
+import { CalendarProvider, SyncedEventInfo } from './calendar-provider';
 
 function lastSyncedKey(provider: string): string {
   return `lastSyncedAt_${provider}`;
@@ -19,95 +15,51 @@ interface SyncResult {
 
 export async function syncShifts(provider: CalendarProvider, shifts: Shift[]): Promise<SyncResult> {
   const result: SyncResult = { created: 0, updated: 0, deleted: 0, errors: [] };
-  const recordsKey = syncRecordsKey(provider.name);
   const syncedKey = lastSyncedKey(provider.name);
 
   const calendarId = await provider.getOrCreateCalendar();
 
-  const storage = await chrome.storage.local.get(recordsKey);
-  const records: SyncRecord[] = storage[recordsKey] || [];
-  const recordMap = new Map(records.map(r => [r.shiftId, r]));
-
-  const newRecords: SyncRecord[] = [];
-  const processedShiftIds = new Set<string>();
+  // Fetch existing events from the calendar (source of truth)
+  const existing = await provider.listSyncedEvents(calendarId);
+  const eventMap = new Map<string, SyncedEventInfo>(existing.map(e => [e.shiftId, e]));
 
   for (const shift of shifts) {
-    processedShiftIds.add(shift.id);
     const hash = computeShiftHash(shift);
-    const existing = recordMap.get(shift.id);
+    const entry = eventMap.get(shift.id);
 
     try {
-      if (!existing) {
-        const event = await provider.createEvent(calendarId, shift);
-        newRecords.push({
-          shiftId: shift.id,
-          calendarEventId: event.id,
-          lastSyncedAt: new Date().toISOString(),
-          hash,
-        });
+      if (!entry) {
+        // New shift — create
+        await provider.createEvent(calendarId, shift, hash);
         result.created++;
-      } else if (existing.hash !== hash) {
-        await provider.updateEvent(calendarId, existing.calendarEventId, shift);
-        newRecords.push({
-          ...existing,
-          lastSyncedAt: new Date().toISOString(),
-          hash,
-        });
+      } else if (entry.hash !== hash) {
+        // Changed or legacy event without hash — update
+        await provider.updateEvent(calendarId, entry.calendarEventId, shift, hash);
         result.updated++;
-      } else {
-        const exists = await provider.eventExists(calendarId, existing.calendarEventId);
-        if (exists) {
-          newRecords.push(existing);
-        } else {
-          const event = await provider.createEvent(calendarId, shift);
-          newRecords.push({
-            shiftId: shift.id,
-            calendarEventId: event.id,
-            lastSyncedAt: new Date().toISOString(),
-            hash,
-          });
-          result.created++;
-        }
       }
+      // else: hash matches — skip
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[Sync:${provider.name}] Error:`, shift.title, msg);
-      if (msg === 'AUTH_EXPIRED') {
-        // Save partial progress so retry doesn't duplicate already-created events
-        const unprocessed = records.filter(r => !processedShiftIds.has(r.shiftId));
-        await chrome.storage.local.set({ [recordsKey]: [...newRecords, ...unprocessed] });
-        throw err;
-      }
+      if (msg === 'AUTH_EXPIRED') throw err;
       result.errors.push(`${shift.title}: ${msg}`);
     }
 
     await delay(200);
   }
 
-  // Keep records for shifts not in current batch
-  for (const record of records) {
-    if (!processedShiftIds.has(record.shiftId)) {
-      newRecords.push(record);
-    }
-  }
-
-  const now = new Date().toISOString();
-  await chrome.storage.local.set({
-    [recordsKey]: newRecords,
-    [syncedKey]: now,
-  });
+  await chrome.storage.local.set({ [syncedKey]: new Date().toISOString() });
 
   return result;
 }
 
 export async function clearSyncedEvents(provider: CalendarProvider): Promise<number> {
-  const recordsKey = syncRecordsKey(provider.name);
   const syncedKey = lastSyncedKey(provider.name);
 
   const calendarId = await provider.getOrCreateCalendar();
   const count = await provider.deleteAllEvents(calendarId);
 
-  await chrome.storage.local.remove([recordsKey, syncedKey]);
+  await chrome.storage.local.remove([syncedKey]);
   return count;
 }
 

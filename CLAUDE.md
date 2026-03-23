@@ -28,7 +28,7 @@ Load the extension in Chrome: `chrome://extensions` → Developer mode → Load 
 
 4. **`src/popup/`** — React 18 UI (`Popup.tsx` + components). Communicates exclusively via `chrome.runtime.sendMessage` to the service worker.
 
-**Provider abstraction** (`src/lib/calendar-provider.ts`): `CalendarProvider` interface implemented by `GoogleProvider` (REST) and `AppleProvider` (CalDAV via `apple-caldav.ts`). `sync-engine.ts` is provider-agnostic — upserts events using a hash-based `SyncRecord` stored in `chrome.storage.local` under `syncRecords_<provider>`.
+**Provider abstraction** (`src/lib/calendar-provider.ts`): `CalendarProvider` interface implemented by `GoogleProvider` (REST) and `AppleProvider` (CalDAV via `apple-caldav.ts`). `sync-engine.ts` is provider-agnostic — uses the calendar as source of truth. Each event stores a `subitupShiftId` and `subitupHash` (Google: `extendedProperties.private`; Apple: UID prefix + `X-SUBITUP-HASH`). On sync, `listSyncedEvents` fetches all events from the calendar, compares hashes, and creates/updates only what changed. No local `SyncRecord` storage — survives extension reinstall.
 
 **Auth split**: Google uses `chrome.identity` (prod) or `launchWebAuthFlow` + token cache (dev/unpacked). Apple uses email + app-specific password stored in `chrome.storage.local` under `appleCredentials`.
 

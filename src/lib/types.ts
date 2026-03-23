@@ -6,13 +6,6 @@ export interface Shift {
   end: string;   // ISO 8601
 }
 
-export interface SyncRecord {
-  shiftId: string;
-  calendarEventId: string;
-  lastSyncedAt: string;
-  hash: string;
-}
-
 export type CalendarProviderType = 'google' | 'apple';
 
 export interface AppleCredentials {

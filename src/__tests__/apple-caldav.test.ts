@@ -5,6 +5,8 @@ import {
   deleteEvent,
   eventExists,
   listEventUids,
+  listSyncedEvents,
+  extractSyncedEvents,
   AppleCredentials,
 } from '../lib/apple-caldav';
 
@@ -260,5 +262,90 @@ describe('listEventUids', () => {
     (fetch as jest.Mock).mockResolvedValueOnce(mockFetchResponse(500));
     const uids = await listEventUids(creds, calUrl);
     expect(uids).toEqual([]);
+  });
+});
+
+// --- extractSyncedEvents ---
+
+describe('extractSyncedEvents', () => {
+  it('extracts UID and X-SUBITUP-HASH from REPORT response', () => {
+    const xml = `
+      <d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+        <d:response>
+          <d:href>/cal/event1.ics</d:href>
+          <d:propstat><d:prop>
+            <c:calendar-data>BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:subitup-abc123\r\nSUMMARY:Shift A\r\nX-SUBITUP-HASH:1a2b3c\r\nEND:VEVENT\r\nEND:VCALENDAR</c:calendar-data>
+          </d:prop></d:propstat>
+        </d:response>
+        <d:response>
+          <d:href>/cal/event2.ics</d:href>
+          <d:propstat><d:prop>
+            <c:calendar-data>BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:subitup-def456\r\nSUMMARY:Shift B\r\nX-SUBITUP-HASH:4d5e6f\r\nEND:VEVENT\r\nEND:VCALENDAR</c:calendar-data>
+          </d:prop></d:propstat>
+        </d:response>
+      </d:multistatus>`;
+
+    const results = extractSyncedEvents(xml);
+    expect(results).toEqual([
+      { uid: 'subitup-abc123', hash: '1a2b3c' },
+      { uid: 'subitup-def456', hash: '4d5e6f' },
+    ]);
+  });
+
+  it('returns null hash for legacy events without X-SUBITUP-HASH', () => {
+    const xml = `
+      <d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+        <d:response>
+          <d:href>/cal/event1.ics</d:href>
+          <d:propstat><d:prop>
+            <c:calendar-data>BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:subitup-old\r\nSUMMARY:Old Shift\r\nEND:VEVENT\r\nEND:VCALENDAR</c:calendar-data>
+          </d:prop></d:propstat>
+        </d:response>
+      </d:multistatus>`;
+
+    const results = extractSyncedEvents(xml);
+    expect(results).toEqual([{ uid: 'subitup-old', hash: null }]);
+  });
+
+  it('skips responses without calendar-data', () => {
+    const xml = `
+      <d:multistatus xmlns:d="DAV:">
+        <d:response><d:href>/cal/</d:href><d:propstat><d:prop></d:prop></d:propstat></d:response>
+      </d:multistatus>`;
+
+    expect(extractSyncedEvents(xml)).toEqual([]);
+  });
+
+  it('returns empty array for empty XML', () => {
+    expect(extractSyncedEvents('')).toEqual([]);
+  });
+});
+
+// --- listSyncedEvents ---
+
+describe('listSyncedEvents', () => {
+  const calUrl = 'https://caldav.icloud.com/123/calendars/abc/';
+
+  it('fetches and parses REPORT response', async () => {
+    const xml = `
+      <d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+        <d:response>
+          <d:href>/cal/event1.ics</d:href>
+          <d:propstat><d:prop>
+            <c:calendar-data>BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:subitup-s1\r\nSUMMARY:Shift\r\nX-SUBITUP-HASH:abc\r\nEND:VEVENT\r\nEND:VCALENDAR</c:calendar-data>
+          </d:prop></d:propstat>
+        </d:response>
+      </d:multistatus>`;
+
+    (fetch as jest.Mock).mockResolvedValueOnce(mockFetchResponse(207, xml));
+    const results = await listSyncedEvents(creds, calUrl);
+    expect(results).toEqual([{ uid: 'subitup-s1', hash: 'abc' }]);
+    expect((fetch as jest.Mock).mock.calls[0][1].method).toBe('REPORT');
+  });
+
+  it('returns empty array on error', async () => {
+    (fetch as jest.Mock).mockResolvedValueOnce(mockFetchResponse(500));
+    const results = await listSyncedEvents(creds, calUrl);
+    expect(results).toEqual([]);
   });
 });

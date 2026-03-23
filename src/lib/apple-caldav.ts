@@ -202,6 +202,38 @@ export async function listEventUids(
   return extractEventUids(xml, calendarUrl);
 }
 
+export interface SyncedEventEntry {
+  uid: string;
+  hash: string | null;
+}
+
+// Fetch all events with their ICS bodies to extract UID and X-SUBITUP-HASH
+export async function listSyncedEvents(
+  creds: AppleCredentials,
+  calendarUrl: string
+): Promise<SyncedEventEntry[]> {
+  const res = await caldavRequest(
+    calendarUrl,
+    'REPORT',
+    creds,
+    `<?xml version="1.0" encoding="utf-8"?>
+<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:prop>
+    <c:calendar-data/>
+  </d:prop>
+  <c:filter>
+    <c:comp-filter name="VCALENDAR">
+      <c:comp-filter name="VEVENT"/>
+    </c:comp-filter>
+  </c:filter>
+</c:calendar-query>`,
+    { Depth: '1' }
+  );
+  if (!res.ok) return [];
+  const xml = await res.text();
+  return extractSyncedEvents(xml);
+}
+
 // --- XML helpers (no library needed) ---
 
 function extractHref(xml: string, tagName: string): string | null {
@@ -241,4 +273,29 @@ function extractEventUids(xml: string, _calendarUrl: string): string[] {
     if (filename) uids.push(filename.replace(/\.ics$/i, ''));
   }
   return uids;
+}
+
+export function extractSyncedEvents(xml: string): SyncedEventEntry[] {
+  const results: SyncedEventEntry[] = [];
+  // Match each DAV response block containing calendar-data
+  const responseRe = /<[^/!?][^>]*:?response\b[^>]*>([\s\S]*?)<\/[^>]*:?response\b[^>]*>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = responseRe.exec(xml)) !== null) {
+    const block = m[1];
+    // Extract calendar-data (ICS body) from CDATA or element text
+    const calDataMatch = block.match(/<[^>]*:?calendar-data[^>]*>([\s\S]*?)<\/[^>]*:?calendar-data/i);
+    if (!calDataMatch) continue;
+    const ics = calDataMatch[1].trim();
+    // Extract UID from ICS
+    const uidMatch = ics.match(/^UID:(.+)$/m);
+    if (!uidMatch) continue;
+    const uid = uidMatch[1].trim();
+    // Extract X-SUBITUP-HASH if present
+    const hashMatch = ics.match(/^X-SUBITUP-HASH:(.+)$/m);
+    results.push({
+      uid,
+      hash: hashMatch ? hashMatch[1].trim() : null,
+    });
+  }
+  return results;
 }

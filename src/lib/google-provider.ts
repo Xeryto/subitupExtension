@@ -1,4 +1,4 @@
-import { CalendarProvider, CalendarEvent } from './calendar-provider';
+import { CalendarProvider, CalendarEvent, SyncedEventInfo } from './calendar-provider';
 import { Shift } from './types';
 import * as cal from './calendar-api';
 
@@ -11,13 +11,13 @@ export class GoogleProvider implements CalendarProvider {
     return cal.getOrCreateCalendar(this.token);
   }
 
-  async createEvent(calendarId: string, shift: Shift): Promise<CalendarEvent> {
-    const evt = await cal.createEvent(this.token, calendarId, shift);
+  async createEvent(calendarId: string, shift: Shift, hash?: string): Promise<CalendarEvent> {
+    const evt = await cal.createEvent(this.token, calendarId, shift, hash);
     return { id: evt.id };
   }
 
-  async updateEvent(calendarId: string, eventId: string, shift: Shift): Promise<CalendarEvent> {
-    const evt = await cal.updateEvent(this.token, calendarId, eventId, shift);
+  async updateEvent(calendarId: string, eventId: string, shift: Shift, hash?: string): Promise<CalendarEvent> {
+    const evt = await cal.updateEvent(this.token, calendarId, eventId, shift, hash);
     return { id: evt.id };
   }
 
@@ -27,6 +27,10 @@ export class GoogleProvider implements CalendarProvider {
 
   async eventExists(calendarId: string, eventId: string): Promise<boolean> {
     return cal.eventExists(this.token, calendarId, eventId);
+  }
+
+  async listSyncedEvents(calendarId: string): Promise<SyncedEventInfo[]> {
+    return cal.listSyncedEvents(this.token, calendarId);
   }
 
   async deleteAllEvents(calendarId: string): Promise<number> {

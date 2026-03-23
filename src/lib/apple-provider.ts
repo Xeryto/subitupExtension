@@ -1,11 +1,11 @@
-import { CalendarProvider, CalendarEvent } from './calendar-provider';
+import { CalendarProvider, CalendarEvent, SyncedEventInfo } from './calendar-provider';
 import { Shift } from './types';
 import { AppleCredentials } from './apple-caldav';
 import * as caldav from './apple-caldav';
 
 const CALENDAR_NAME = 'SubItUp Shifts';
 
-function shiftToIcal(shift: Shift, sequence = 0): string {
+function shiftToIcal(shift: Shift, sequence = 0, hash?: string): string {
   const uid = eventUid(shift.id);
   const now = toIcsUtc(new Date().toISOString());
   const lines = [
@@ -21,6 +21,7 @@ function shiftToIcal(shift: Shift, sequence = 0): string {
     `SEQUENCE:${sequence}`,
   ];
   if (shift.location) lines.push(`LOCATION:${escapeIcs(shift.location)}`);
+  if (hash) lines.push(`X-SUBITUP-HASH:${hash}`);
   lines.push('END:VEVENT', 'END:VCALENDAR');
   return lines.join('\r\n') + '\r\n';
 }
@@ -46,6 +47,13 @@ function normalizeUid(uid: string): string {
   return stripped.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+// Extract shiftId from a subitup UID (reverse of eventUid)
+function shiftIdFromUid(uid: string): string | null {
+  const normalized = normalizeUid(uid);
+  if (!normalized.startsWith('subitup-')) return null;
+  return normalized.slice('subitup-'.length);
+}
+
 export class AppleProvider implements CalendarProvider {
   readonly name = 'apple';
   private calendarHome: string | null = null;
@@ -62,16 +70,16 @@ export class AppleProvider implements CalendarProvider {
     return this.calendarUrl;
   }
 
-  async createEvent(calendarId: string, shift: Shift): Promise<CalendarEvent> {
+  async createEvent(calendarId: string, shift: Shift, hash?: string): Promise<CalendarEvent> {
     const uid = eventUid(shift.id);
-    const ical = shiftToIcal(shift, 0);
+    const ical = shiftToIcal(shift, 0, hash);
     const etag = await caldav.putEvent(this.creds, calendarId, uid, ical);
     return { id: uid, etag };
   }
 
-  async updateEvent(calendarId: string, eventId: string, shift: Shift): Promise<CalendarEvent> {
+  async updateEvent(calendarId: string, eventId: string, shift: Shift, hash?: string): Promise<CalendarEvent> {
     const uid = normalizeUid(eventId);
-    const ical = shiftToIcal(shift, 1);
+    const ical = shiftToIcal(shift, 1, hash);
     const etag = await caldav.putEvent(this.creds, calendarId, uid, ical);
     return { id: uid, etag };
   }
@@ -82,6 +90,21 @@ export class AppleProvider implements CalendarProvider {
 
   async eventExists(calendarId: string, eventId: string): Promise<boolean> {
     return caldav.eventExists(this.creds, calendarId, normalizeUid(eventId));
+  }
+
+  async listSyncedEvents(calendarId: string): Promise<SyncedEventInfo[]> {
+    const entries = await caldav.listSyncedEvents(this.creds, calendarId);
+    return entries
+      .map(e => {
+        const shiftId = shiftIdFromUid(e.uid);
+        if (!shiftId) return null;
+        return {
+          shiftId,
+          calendarEventId: e.uid,
+          hash: e.hash,
+        };
+      })
+      .filter((e): e is SyncedEventInfo => e !== null);
   }
 
   async deleteAllEvents(calendarId: string): Promise<number> {

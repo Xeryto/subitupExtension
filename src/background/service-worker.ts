@@ -139,7 +139,7 @@ async function handleMessage(message: { type: string; [key: string]: unknown }, 
           chrome.identity.removeCachedAuthToken({ token });
         }
       }
-      await chrome.storage.local.remove([TOKEN_KEY, 'syncRecords_google', 'lastSyncedAt_google']);
+      await chrome.storage.local.remove([TOKEN_KEY, 'lastSyncedAt_google']);
       return { success: true };
     }
 
@@ -177,7 +177,7 @@ async function handleMessage(message: { type: string; [key: string]: unknown }, 
     }
 
     case 'DISCONNECT_APPLE': {
-      await chrome.storage.local.remove([APPLE_CREDS_KEY, 'syncRecords_apple', 'lastSyncedAt_apple']);
+      await chrome.storage.local.remove([APPLE_CREDS_KEY, 'lastSyncedAt_apple']);
       return { success: true };
     }
 

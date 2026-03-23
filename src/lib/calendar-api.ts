@@ -1,4 +1,5 @@
 import { Shift } from './types';
+import { SyncedEventInfo } from './calendar-provider';
 
 const BASE = 'https://www.googleapis.com/calendar/v3';
 const CALENDAR_NAME = 'SubItUp Shifts';
@@ -101,13 +102,14 @@ export async function listEvents(
 export async function createEvent(
   token: string,
   calendarId: string,
-  shift: Shift
+  shift: Shift,
+  hash?: string
 ): Promise<CalendarEvent> {
   return apiRequest<CalendarEvent>(
     token,
     `/calendars/${encodeURIComponent(calendarId)}/events`,
     'POST',
-    shiftToEvent(shift)
+    shiftToEvent(shift, hash)
   );
 }
 
@@ -115,14 +117,29 @@ export async function updateEvent(
   token: string,
   calendarId: string,
   eventId: string,
-  shift: Shift
+  shift: Shift,
+  hash?: string
 ): Promise<CalendarEvent> {
   return apiRequest<CalendarEvent>(
     token,
     `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
     'PUT',
-    shiftToEvent(shift)
+    shiftToEvent(shift, hash)
   );
+}
+
+export async function listSyncedEvents(
+  token: string,
+  calendarId: string
+): Promise<SyncedEventInfo[]> {
+  const events = await listEvents(token, calendarId);
+  return events
+    .filter(e => e.extendedProperties?.private?.subitupShiftId)
+    .map(e => ({
+      shiftId: e.extendedProperties!.private!.subitupShiftId,
+      calendarEventId: e.id,
+      hash: e.extendedProperties!.private!.subitupHash || null,
+    }));
 }
 
 export async function eventExists(
@@ -168,7 +185,9 @@ export async function deleteAllEvents(
   return count;
 }
 
-function shiftToEvent(shift: Shift): object {
+function shiftToEvent(shift: Shift, hash?: string): object {
+  const props: Record<string, string> = { subitupShiftId: shift.id };
+  if (hash) props.subitupHash = hash;
   return {
     summary: shift.title,
     location: shift.location,
@@ -179,9 +198,7 @@ function shiftToEvent(shift: Shift): object {
       dateTime: shift.end,
     },
     extendedProperties: {
-      private: {
-        subitupShiftId: shift.id,
-      },
+      private: props,
     },
   };
 }
