@@ -137,7 +137,13 @@ async function handleMessage(message: { type: string; [key: string]: unknown }, 
       if (token) {
         if (isProduction) {
           chrome.identity.removeCachedAuthToken({ token });
+        } else {
+          await chrome.storage.local.remove(TOKEN_KEY);
         }
+        // Revoke the grant on Google's servers so getAuthToken prompts again
+        try {
+          await fetch(`https://oauth2.googleapis.com/revoke?token=${token}`, { method: 'POST' });
+        } catch {}
       }
       await chrome.storage.local.remove([TOKEN_KEY, 'lastSyncedAt_google']);
       return { success: true };

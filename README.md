@@ -6,7 +6,7 @@ A Chrome extension that syncs your SubItUp work schedule to Google Calendar or A
 
 ## Install
 
-[SubItUp Sync on the Chrome Web Store](https://chrome.google.com/webstore/detail/subitup-sync) — install and you're ready to set up.
+[SubItUp Sync on the Chrome Web Store](https://chromewebstore.google.com/detail/subitup-sync/idkjlkkompfclfnampbhlcjbefefkepn?authuser=2&hl=en) — install and you're ready to set up.
 
 ---
 
