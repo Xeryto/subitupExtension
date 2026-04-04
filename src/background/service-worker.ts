@@ -4,25 +4,12 @@ import { Shift, UserInfo, AppleCredentials, CalendarProviderType, DEFAULT_SETTIN
 import { GoogleProvider } from '../lib/google-provider';
 import { AppleProvider } from '../lib/apple-provider';
 import { CalendarProvider } from '../lib/calendar-provider';
-import { WEB_CLIENT_ID } from '../config';
-
 const DISPLAY_SHIFTS_KEY = 'displayShifts';  // Latest view — replaced on each API response
 const ALL_SHIFTS_KEY = 'allShifts';          // Accumulated — merged, never deleted
 const TOKEN_KEY = 'authToken';
 const APPLE_CREDS_KEY = 'appleCredentials';
 
-// Dev (unpacked) uses launchWebAuthFlow; production uses getAuthToken
-const isProduction = !!chrome.runtime.getManifest().update_url;
-
 let syncInProgress = false;
-
-const SCOPES = [
-  'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
-  'https://www.googleapis.com/auth/calendar.calendars',
-  'https://www.googleapis.com/auth/calendar.events.owned',
-  'https://www.googleapis.com/auth/userinfo.email',
-  'https://www.googleapis.com/auth/userinfo.profile',
-].join(' ');
 
 // --- Network interception ---
 chrome.webRequest.onBeforeRequest.addListener(
@@ -135,11 +122,7 @@ async function handleMessage(message: { type: string; [key: string]: unknown }, 
     case 'SIGN_OUT': {
       const token = await getAuthToken(false);
       if (token) {
-        if (isProduction) {
-          chrome.identity.removeCachedAuthToken({ token });
-        } else {
-          await chrome.storage.local.remove(TOKEN_KEY);
-        }
+        chrome.identity.removeCachedAuthToken({ token });
         // Revoke the grant on Google's servers so getAuthToken prompts again
         try {
           await fetch(`https://oauth2.googleapis.com/revoke?token=${token}`, { method: 'POST' });
@@ -243,15 +226,7 @@ async function doSync(providerType: CalendarProviderType, shifts: Shift[]): Prom
 
 // --- Auth ---
 
-async function getAuthToken(interactive: boolean): Promise<string | null> {
-  if (isProduction) {
-    return getAuthTokenProduction(interactive);
-  }
-  return getAuthTokenDev(interactive);
-}
-
-// Production: chrome.identity.getAuthToken (requires published extension)
-function getAuthTokenProduction(interactive: boolean): Promise<string | null> {
+function getAuthToken(interactive: boolean): Promise<string | null> {
   return new Promise((resolve) => {
     chrome.identity.getAuthToken({ interactive }, (token) => {
       if (chrome.runtime.lastError) {
@@ -263,61 +238,6 @@ function getAuthTokenProduction(interactive: boolean): Promise<string | null> {
       }
       resolve(token ?? null);
     });
-  });
-}
-
-// Dev: chrome.identity.launchWebAuthFlow (works with unpacked extensions)
-async function getAuthTokenDev(interactive: boolean): Promise<string | null> {
-  // Check for cached token first
-  const stored = await chrome.storage.local.get(TOKEN_KEY);
-  if (stored[TOKEN_KEY]) {
-    // Validate token is still good
-    try {
-      const res = await fetch('https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=' + stored[TOKEN_KEY]);
-      if (res.ok) return stored[TOKEN_KEY];
-    } catch {}
-    // Token expired, clear it
-    await chrome.storage.local.remove(TOKEN_KEY);
-  }
-
-  if (!interactive) return null;
-
-  // Launch OAuth flow
-  const redirectUri = chrome.identity.getRedirectURL();
-  const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-  authUrl.searchParams.set('client_id', WEB_CLIENT_ID);
-  authUrl.searchParams.set('response_type', 'token');
-  authUrl.searchParams.set('redirect_uri', redirectUri);
-  authUrl.searchParams.set('scope', SCOPES);
-  authUrl.searchParams.set('prompt', 'consent');
-
-  return new Promise((resolve) => {
-    chrome.identity.launchWebAuthFlow(
-      { url: authUrl.toString(), interactive: true },
-      (responseUrl) => {
-        if (chrome.runtime.lastError || !responseUrl) {
-          const msg = chrome.runtime.lastError?.message ?? 'Auth flow cancelled';
-          console.error('Auth error:', msg);
-          (globalThis as any).__lastAuthError = msg;
-          resolve(null);
-          return;
-        }
-
-        // Extract access_token from redirect URL fragment
-        const url = new URL(responseUrl);
-        const params = new URLSearchParams(url.hash.substring(1));
-        const token = params.get('access_token');
-
-        if (token) {
-          chrome.storage.local.set({ [TOKEN_KEY]: token });
-          resolve(token);
-        } else {
-          console.error('No access_token in OAuth response');
-          (globalThis as any).__lastAuthError = 'No access token received';
-          resolve(null);
-        }
-      }
-    );
   });
 }
 

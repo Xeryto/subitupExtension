@@ -1,5 +1,6 @@
 {
   "manifest_version": 3,
+  "key": "YOUR_EXTENSION_PUBLIC_KEY (from CWS dashboard or installed extension manifest)",
   "name": "SubItUp Sync",
   "version": "1.0.0",
   "description": "Sync your SubItUp shifts to Google Calendar with one click.",
