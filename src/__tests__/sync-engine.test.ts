@@ -112,6 +112,18 @@ describe('syncShifts', () => {
     expect(mockProvider.updateEvent).toHaveBeenCalledTimes(1);
   });
 
+  it('deletes calendar events for shifts no longer in schedule', async () => {
+    const hash1 = computeShiftHash(shifts[0]);
+    mockProvider = createMockProvider([
+      { shiftId: 's1', calendarEventId: 'e1', hash: hash1 },
+      { shiftId: 's_old', calendarEventId: 'e_old', hash: 'stale' },
+    ]);
+
+    const result = await syncShifts(mockProvider, [shifts[0]]);
+    expect(result.deleted).toBe(1);
+    expect(mockProvider.deleteEvent).toHaveBeenCalledWith('cal_123', 'e_old');
+  });
+
   it('stores lastSyncedAt timestamp', async () => {
     await syncShifts(mockProvider, shifts);
     expect(mockStorage['lastSyncedAt_google']).toBeDefined();

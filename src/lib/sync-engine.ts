@@ -48,6 +48,22 @@ export async function syncShifts(provider: CalendarProvider, shifts: Shift[]): P
     await delay(200);
   }
 
+  // Delete calendar events for shifts no longer in the schedule
+  const incomingIds = new Set(shifts.map(s => s.id));
+  for (const entry of existing) {
+    if (!incomingIds.has(entry.shiftId)) {
+      try {
+        await provider.deleteEvent(calendarId, entry.calendarEventId);
+        result.deleted++;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[Sync:${provider.name}] Delete error:`, entry.shiftId, msg);
+        result.errors.push(`delete ${entry.shiftId}: ${msg}`);
+      }
+      await delay(200);
+    }
+  }
+
   await chrome.storage.local.set({ [syncedKey]: new Date().toISOString() });
 
   return result;
