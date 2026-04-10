@@ -13,7 +13,9 @@ interface SyncResult {
   errors: string[];
 }
 
-export async function syncShifts(provider: CalendarProvider, shifts: Shift[]): Promise<SyncResult> {
+export interface ViewedRange { from: string; to: string } // "YYYY-MM-DD"
+
+export async function syncShifts(provider: CalendarProvider, shifts: Shift[], viewedRange?: ViewedRange): Promise<SyncResult> {
   const result: SyncResult = { created: 0, updated: 0, deleted: 0, errors: [] };
   const syncedKey = lastSyncedKey(provider.name);
 
@@ -48,20 +50,21 @@ export async function syncShifts(provider: CalendarProvider, shifts: Shift[]): P
     await delay(200);
   }
 
-  // Delete calendar events for shifts no longer in the schedule
+  // Delete calendar events for shifts no longer in the schedule,
+  // but only within the date range we know was fully fetched from SubItUp.
   const incomingIds = new Set(shifts.map(s => s.id));
   for (const entry of existing) {
-    if (!incomingIds.has(entry.shiftId)) {
-      try {
-        await provider.deleteEvent(calendarId, entry.calendarEventId);
-        result.deleted++;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[Sync:${provider.name}] Delete error:`, entry.shiftId, msg);
-        result.errors.push(`delete ${entry.shiftId}: ${msg}`);
-      }
-      await delay(200);
+    if (incomingIds.has(entry.shiftId)) continue;
+    if (!viewedRange || !isInRange(entry.start, viewedRange)) continue;
+    try {
+      await provider.deleteEvent(calendarId, entry.calendarEventId);
+      result.deleted++;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[Sync:${provider.name}] Delete error:`, entry.shiftId, msg);
+      result.errors.push(`delete ${entry.shiftId}: ${msg}`);
     }
+    await delay(200);
   }
 
   await chrome.storage.local.set({ [syncedKey]: new Date().toISOString() });
@@ -77,6 +80,13 @@ export async function clearSyncedEvents(provider: CalendarProvider): Promise<num
 
   await chrome.storage.local.remove([syncedKey]);
   return count;
+}
+
+// Returns true if the ISO datetime string falls within the YYYY-MM-DD range (inclusive)
+function isInRange(isoStart: string, range: ViewedRange): boolean {
+  if (!isoStart) return false;
+  const date = isoStart.slice(0, 10); // "YYYY-MM-DD"
+  return date >= range.from && date <= range.to;
 }
 
 function delay(ms: number): Promise<void> {

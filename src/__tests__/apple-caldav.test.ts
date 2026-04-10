@@ -287,8 +287,8 @@ describe('extractSyncedEvents', () => {
 
     const results = extractSyncedEvents(xml);
     expect(results).toEqual([
-      { uid: 'subitup-abc123', hash: '1a2b3c' },
-      { uid: 'subitup-def456', hash: '4d5e6f' },
+      { uid: 'subitup-abc123', hash: '1a2b3c', start: null },
+      { uid: 'subitup-def456', hash: '4d5e6f', start: null },
     ]);
   });
 
@@ -304,7 +304,7 @@ describe('extractSyncedEvents', () => {
       </d:multistatus>`;
 
     const results = extractSyncedEvents(xml);
-    expect(results).toEqual([{ uid: 'subitup-old', hash: null }]);
+    expect(results).toEqual([{ uid: 'subitup-old', hash: null, start: null }]);
   });
 
   it('skips responses without calendar-data', () => {
@@ -339,7 +339,7 @@ describe('listSyncedEvents', () => {
 
     (fetch as jest.Mock).mockResolvedValueOnce(mockFetchResponse(207, xml));
     const results = await listSyncedEvents(creds, calUrl);
-    expect(results).toEqual([{ uid: 'subitup-s1', hash: 'abc' }]);
+    expect(results).toEqual([{ uid: 'subitup-s1', hash: 'abc', start: null }]);
     expect((fetch as jest.Mock).mock.calls[0][1].method).toBe('REPORT');
   });
 

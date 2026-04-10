@@ -102,6 +102,7 @@ export class AppleProvider implements CalendarProvider {
           shiftId,
           calendarEventId: e.uid,
           hash: e.hash,
+          start: e.start ?? '',
         };
       })
       .filter((e): e is SyncedEventInfo => e !== null);

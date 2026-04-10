@@ -139,6 +139,7 @@ export async function listSyncedEvents(
       shiftId: e.extendedProperties!.private!.subitupShiftId,
       calendarEventId: e.id,
       hash: e.extendedProperties!.private!.subitupHash || null,
+      start: e.start.dateTime,
     }));
 }
 

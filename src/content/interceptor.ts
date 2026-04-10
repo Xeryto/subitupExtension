@@ -13,8 +13,29 @@ function isScheduleUrl(url: string): boolean {
   );
 }
 
-function sendToExtension(data: unknown) {
-  window.postMessage({ type: '__SUBITUP_SYNC_DATA__', data }, '*');
+interface ViewedRange { from: string; to: string }
+
+function parseViewedRange(bodyStr: string | null | undefined): ViewedRange | null {
+  if (!bodyStr || typeof bodyStr !== 'string') return null;
+  try {
+    const obj = JSON.parse(bodyStr);
+    const from = parseSubitupDate(obj.startdate);
+    const to = parseSubitupDate(obj.enddate);
+    if (from && to) return { from, to };
+  } catch {}
+  return null;
+}
+
+// Convert SubItUp "MM-DD-YYYY" → "YYYY-MM-DD"
+function parseSubitupDate(val: unknown): string | null {
+  if (typeof val !== 'string') return null;
+  const parts = val.split('-');
+  if (parts.length !== 3 || parts[2].length !== 4) return null;
+  return `${parts[2]}-${parts[0]}-${parts[1]}`;
+}
+
+function sendToExtension(data: unknown, viewedRange: ViewedRange | null) {
+  window.postMessage({ type: '__SUBITUP_SYNC_DATA__', data, viewedRange }, '*');
 }
 
 // Patch XHR
@@ -29,10 +50,11 @@ XMLHttpRequest.prototype.open = function (method: string, url: string | URL, ...
 XMLHttpRequest.prototype.send = function (body?: Document | XMLHttpRequestBodyInit | null) {
   const url = (this as any).__subitupUrl;
   if (isScheduleUrl(url)) {
+    const viewedRange = parseViewedRange(typeof body === 'string' ? body : null);
     this.addEventListener('load', function () {
       try {
         const data = JSON.parse(this.responseText);
-        sendToExtension(data);
+        sendToExtension(data, viewedRange);
       } catch {}
     });
   }
@@ -46,8 +68,12 @@ window.fetch = async function (...args: Parameters<typeof fetch>) {
   try {
     const url = typeof args[0] === 'string' ? args[0] : (args[0] as Request).url;
     if (isScheduleUrl(url)) {
+      const bodyStr = typeof (args[1] as RequestInit | undefined)?.body === 'string'
+        ? (args[1] as RequestInit).body as string
+        : null;
+      const viewedRange = parseViewedRange(bodyStr);
       response.clone().json().then(data => {
-        sendToExtension(data);
+        sendToExtension(data, viewedRange);
       }).catch(() => {});
     }
   } catch {}

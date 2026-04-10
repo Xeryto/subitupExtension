@@ -1,5 +1,5 @@
 import { parseSubItUpResponse } from '../lib/shift-parser';
-import { syncShifts, clearSyncedEvents } from '../lib/sync-engine';
+import { syncShifts, clearSyncedEvents, ViewedRange } from '../lib/sync-engine';
 import { Shift, UserInfo, AppleCredentials, CalendarProviderType, DEFAULT_SETTINGS } from '../lib/types';
 import { GoogleProvider } from '../lib/google-provider';
 import { AppleProvider } from '../lib/apple-provider';
@@ -57,7 +57,8 @@ async function handleMessage(message: { type: string; [key: string]: unknown }, 
           autoSyncPending = false;
           const s = await chrome.storage.local.get('settings');
           const p = { ...DEFAULT_SETTINGS, ...s.settings }.activeProvider;
-          handleMessage({ type: 'SYNC_TO_CALENDAR', provider: p }, undefined).catch(() => {});
+          const vr = (message.viewedRange as ViewedRange | null) ?? undefined;
+          handleMessage({ type: 'SYNC_TO_CALENDAR', provider: p, viewedRange: vr }, undefined).catch(() => {});
         }
       }
       return { success: true, count: newShifts.length };
@@ -73,7 +74,8 @@ async function handleMessage(message: { type: string; [key: string]: unknown }, 
       const storage = await chrome.storage.local.get(ALL_SHIFTS_KEY);
       const shifts: Shift[] = storage[ALL_SHIFTS_KEY] || [];
       if (shifts.length === 0) return { success: false, error: 'No shifts to sync' };
-      return doSync(providerType as CalendarProviderType, shifts);
+      const viewedRange = (message.viewedRange as ViewedRange | undefined) ?? undefined;
+      return doSync(providerType as CalendarProviderType, shifts, viewedRange);
     }
 
     case 'SYNC_SELECTED': {
@@ -192,13 +194,13 @@ async function getProvider(type: CalendarProviderType): Promise<CalendarProvider
   return null;
 }
 
-async function doSync(providerType: CalendarProviderType, shifts: Shift[]): Promise<unknown> {
+async function doSync(providerType: CalendarProviderType, shifts: Shift[], viewedRange?: ViewedRange): Promise<unknown> {
   if (syncInProgress) return { success: false, error: 'Sync already in progress' };
   syncInProgress = true;
   try {
     const provider = await getProvider(providerType);
     if (!provider) return { success: false, error: `${providerType} not authenticated` };
-    const result = await syncShifts(provider, shifts);
+    const result = await syncShifts(provider, shifts, viewedRange);
     updateBadgeColor('#22C55E');
     return { success: true, syncedCount: result.created + result.updated, ...result };
   } catch (err) {
@@ -209,7 +211,7 @@ async function doSync(providerType: CalendarProviderType, shifts: Shift[]): Prom
       const token = await getAuthToken(false);
       if (token) {
         const provider = new GoogleProvider(token);
-        const result = await syncShifts(provider, shifts);
+        const result = await syncShifts(provider, shifts, viewedRange);
         updateBadgeColor('#22C55E');
         return { success: true, syncedCount: result.created + result.updated, ...result };
       }

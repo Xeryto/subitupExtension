@@ -205,6 +205,7 @@ export async function listEventUids(
 export interface SyncedEventEntry {
   uid: string;
   hash: string | null;
+  start: string | null; // ISO datetime parsed from DTSTART
 }
 
 // Fetch all events with their ICS bodies to extract UID and X-SUBITUP-HASH
@@ -275,6 +276,15 @@ function extractEventUids(xml: string, _calendarUrl: string): string[] {
   return uids;
 }
 
+function parseIcsDateTime(dtstart: string): string | null {
+  // Handles "20260317T140000Z" and "20260317T140000" (local time)
+  const m = dtstart.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/);
+  if (!m) return null;
+  const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}${m[7] || 'Z'}`;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 export function extractSyncedEvents(xml: string): SyncedEventEntry[] {
   const results: SyncedEventEntry[] = [];
   // Match each DAV response block containing calendar-data
@@ -292,9 +302,13 @@ export function extractSyncedEvents(xml: string): SyncedEventEntry[] {
     const uid = uidMatch[1].trim();
     // Extract X-SUBITUP-HASH if present
     const hashMatch = ics.match(/^X-SUBITUP-HASH:(.+)$/m);
+    // Extract DTSTART (e.g. "20260317T140000Z") and convert to ISO
+    const dtStartMatch = ics.match(/^DTSTART[^:]*:(.+)$/m);
+    const start = dtStartMatch ? parseIcsDateTime(dtStartMatch[1].trim()) : null;
     results.push({
       uid,
       hash: hashMatch ? hashMatch[1].trim() : null,
+      start,
     });
   }
   return results;

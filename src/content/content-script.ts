@@ -2,7 +2,7 @@
 window.addEventListener('message', (event) => {
   if (event.source !== window) return;
   if (event.data?.type === '__SUBITUP_SYNC_DATA__' && event.data.data) {
-    chrome.runtime.sendMessage({ type: 'INTERCEPTED_DATA', data: event.data.data });
+    chrome.runtime.sendMessage({ type: 'INTERCEPTED_DATA', data: event.data.data, viewedRange: event.data.viewedRange ?? null });
   }
 });
 

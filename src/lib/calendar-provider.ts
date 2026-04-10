@@ -9,6 +9,7 @@ export interface SyncedEventInfo {
   shiftId: string;
   calendarEventId: string;
   hash: string | null;
+  start: string; // ISO datetime
 }
 
 export interface CalendarProvider {

@@ -75,8 +75,8 @@ describe('syncShifts', () => {
     const hash1 = computeShiftHash(shifts[0]);
     const hash2 = computeShiftHash(shifts[1]);
     mockProvider = createMockProvider([
-      { shiftId: 's1', calendarEventId: 'e1', hash: hash1 },
-      { shiftId: 's2', calendarEventId: 'e2', hash: hash2 },
+      { shiftId: 's1', calendarEventId: 'e1', hash: hash1, start: shifts[0].start },
+      { shiftId: 's2', calendarEventId: 'e2', hash: hash2, start: shifts[1].start },
     ]);
 
     const modified = [{ ...shifts[0], title: 'Reception' }, shifts[1]];
@@ -91,8 +91,8 @@ describe('syncShifts', () => {
     const hash1 = computeShiftHash(shifts[0]);
     const hash2 = computeShiftHash(shifts[1]);
     mockProvider = createMockProvider([
-      { shiftId: 's1', calendarEventId: 'e1', hash: hash1 },
-      { shiftId: 's2', calendarEventId: 'e2', hash: hash2 },
+      { shiftId: 's1', calendarEventId: 'e1', hash: hash1, start: shifts[0].start },
+      { shiftId: 's2', calendarEventId: 'e2', hash: hash2, start: shifts[1].start },
     ]);
 
     const result = await syncShifts(mockProvider, shifts);
@@ -104,7 +104,7 @@ describe('syncShifts', () => {
 
   it('updates legacy events with null hash', async () => {
     mockProvider = createMockProvider([
-      { shiftId: 's1', calendarEventId: 'e1', hash: null },
+      { shiftId: 's1', calendarEventId: 'e1', hash: null, start: shifts[0].start },
     ]);
 
     const result = await syncShifts(mockProvider, [shifts[0]]);
@@ -112,16 +112,42 @@ describe('syncShifts', () => {
     expect(mockProvider.updateEvent).toHaveBeenCalledTimes(1);
   });
 
-  it('deletes calendar events for shifts no longer in schedule', async () => {
+  it('deletes calendar events for removed shifts within the viewed range', async () => {
     const hash1 = computeShiftHash(shifts[0]);
     mockProvider = createMockProvider([
-      { shiftId: 's1', calendarEventId: 'e1', hash: hash1 },
-      { shiftId: 's_old', calendarEventId: 'e_old', hash: 'stale' },
+      { shiftId: 's1', calendarEventId: 'e1', hash: hash1, start: '2024-03-17T09:00:00Z' },
+      { shiftId: 's_old', calendarEventId: 'e_old', hash: 'stale', start: '2024-03-17T13:00:00Z' },
+    ]);
+
+    const viewedRange = { from: '2024-03-17', to: '2024-03-17' };
+    const result = await syncShifts(mockProvider, [shifts[0]], viewedRange);
+    expect(result.deleted).toBe(1);
+    expect(mockProvider.deleteEvent).toHaveBeenCalledWith('cal_123', 'e_old');
+  });
+
+  it('does not delete events outside the viewed range', async () => {
+    const hash1 = computeShiftHash(shifts[0]);
+    mockProvider = createMockProvider([
+      { shiftId: 's1', calendarEventId: 'e1', hash: hash1, start: '2024-03-17T09:00:00Z' },
+      { shiftId: 's_future', calendarEventId: 'e_future', hash: 'other', start: '2024-04-15T09:00:00Z' },
+    ]);
+
+    const viewedRange = { from: '2024-03-17', to: '2024-03-17' };
+    const result = await syncShifts(mockProvider, [shifts[0]], viewedRange);
+    expect(result.deleted).toBe(0);
+    expect(mockProvider.deleteEvent).not.toHaveBeenCalled();
+  });
+
+  it('does not delete anything when no viewedRange provided', async () => {
+    const hash1 = computeShiftHash(shifts[0]);
+    mockProvider = createMockProvider([
+      { shiftId: 's1', calendarEventId: 'e1', hash: hash1, start: '2024-03-17T09:00:00Z' },
+      { shiftId: 's_old', calendarEventId: 'e_old', hash: 'stale', start: '2024-03-17T13:00:00Z' },
     ]);
 
     const result = await syncShifts(mockProvider, [shifts[0]]);
-    expect(result.deleted).toBe(1);
-    expect(mockProvider.deleteEvent).toHaveBeenCalledWith('cal_123', 'e_old');
+    expect(result.deleted).toBe(0);
+    expect(mockProvider.deleteEvent).not.toHaveBeenCalled();
   });
 
   it('stores lastSyncedAt timestamp', async () => {
