@@ -65,7 +65,7 @@ function injectWidget() {
 
   const iframe = document.createElement('iframe');
   iframe.src = chrome.runtime.getURL('popup.html');
-  Object.assign(iframe.style, { width: '100%', height: '100%', border: 'none' });
+  Object.assign(iframe.style, { width: '100%', height: '100%', border: 'none', borderRadius: '12px' });
   panel.appendChild(iframe);
 
   let open = false;
