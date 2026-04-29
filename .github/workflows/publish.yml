@@ -1,0 +1,38 @@
+name: Publish to Chrome Web Store
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate tag matches manifest version
+        run: |
+          MANIFEST_VER=$(jq -r '.version' manifest.json)
+          TAG_VER=${GITHUB_REF_NAME#v}
+          if [ "$MANIFEST_VER" != "$TAG_VER" ]; then
+            echo "Tag $TAG_VER != manifest $MANIFEST_VER"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Zip dist
+        run: cd dist && zip -r ../extension.zip .
+
+      - name: Upload to Chrome Web Store
+        run: npx chrome-webstore-upload-cli@3 upload --auto-publish
+        env:
+          EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
