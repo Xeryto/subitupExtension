@@ -210,7 +210,7 @@ export function Popup() {
   }
 
   return (
-    <div className="flex flex-col h-full min-h-[500px] bg-bg">
+    <div className="flex flex-col min-h-full bg-bg">
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-primary/10">
         <div className="flex items-center gap-2">
@@ -268,15 +268,13 @@ export function Popup() {
         </div>
       )}
 
-      {/* Shift list — scrollable */}
-      <div className="flex-1 overflow-y-auto">
-        <ShiftList
-          shifts={shifts}
-          loading={shiftsLoading}
-          selectedIds={selectedIds}
-          onToggle={handleToggleShift}
-        />
-      </div>
+      {/* Shift list */}
+      <ShiftList
+        shifts={shifts}
+        loading={shiftsLoading}
+        selectedIds={selectedIds}
+        onToggle={handleToggleShift}
+      />
 
       {/* Sync button */}
       <SyncButton
