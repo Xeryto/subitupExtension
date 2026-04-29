@@ -54,6 +54,7 @@ function injectWidget() {
     height: '520px',
     borderRadius: '12px',
     overflow: 'hidden',
+    backgroundColor: '#ECFEFF',
     boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
     zIndex: '2147483647',
     display: 'none',
