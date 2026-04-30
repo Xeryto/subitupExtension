@@ -6,7 +6,6 @@ coverage/
 
 .claude/
 src/config.ts
-manifest.json
 LAUNCH_CHECKLIST.md
 
 screenshot-*.html
