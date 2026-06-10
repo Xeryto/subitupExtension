@@ -4,6 +4,7 @@ on:
   push:
     branches: [master]
     paths: ['PRIVACY.md']
+  workflow_dispatch:
 
 jobs:
   notify:
