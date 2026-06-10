@@ -1,6 +1,6 @@
 # Privacy Policy — SubItUp Sync
 
-**Last updated: March 2026**
+**Last updated: June 2026**
 
 ---
 
@@ -89,6 +89,17 @@ The extension requests the minimum permissions needed to function:
 - **identity** — used exclusively to sign in with Google via Chrome's OAuth flow
 - **storage** — stores data locally on your device only
 - **webRequest** — detects when SubItUp pages load so shifts can be read; does not modify any requests
+
+---
+
+## Security
+
+Security procedures are in place to protect the confidentiality of your data:
+
+- **Encryption in transit** — all communication with Google Calendar API and Apple iCloud CalDAV uses HTTPS (TLS). Your shift data and credentials are never sent over an unencrypted connection.
+- **No server storage** — because the extension has no backend server, your data cannot be exposed through a server-side breach. Everything stays on your device.
+- **Credential isolation** — your Apple app-specific password and Google OAuth token are stored only in Chrome's `chrome.storage.local`, scoped exclusively to this extension. No other extension or website can access them.
+- **Minimal data scope** — only the minimum data required to create calendar events is sent to Google or Apple. No additional profile or behavioral data is collected or transmitted.
 
 ---
 
